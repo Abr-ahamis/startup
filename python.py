@@ -90,7 +90,7 @@ def setup_wallpapers():
 
 def apply_gnome_tweaks():
     tweaks = {
-        "org.gnome.desktop.interface font-name": "'Conifer 11'",
+        "org.gnome.desktop.interface font-name": "'DejaVu Serif Condensed 10'",
         "org.gnome.desktop.interface text-scaling-factor": "0.95",
         "org.gnome.desktop.background picture-options": "'zoom'"
     }
