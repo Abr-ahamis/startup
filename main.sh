@@ -40,7 +40,7 @@ cd "$STARTUP_DIR"
 #  MAIN SETUP SCRIPT
 # ============================================================
 
-sudo apt update
+sudo apt update && sudo apt upgrade
 sudo apt install -y i3-wm i3blocks rofi pkexec polkitd xdotool dex acpi upower xfce4-power-manager \
 i3lock xss-lock pulseaudio-utils brightnessctl feh picom fonts-font-awesome git rsync unzip curl wget
 
@@ -138,13 +138,9 @@ fi
 # ============================================================
 #  PROTONVPN
 # ============================================================
-
-wget -q https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_1.0.8_all.deb -O /tmp/protonvpn.deb
-sudo dpkg -i /tmp/protonvpn.deb || true
-sudo apt update
-sudo apt install -y proton-vpn-gnome-desktop libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 gnome-shell-extension-appindicator
-nohup protonvpn-app >/dev/null 2>&1 &
-
+sudo apt update && sudo apt upgrade 
+wget https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_1.0.8_all.deb
+sudo dpkg -i ./protonvpn-stable-release_1.0.8_all.deb && sudo apt updatesudo apt install proton-vpn-gnome-desktop
 
 # ============================================================
 #  VISUAL STUDIO CODE
