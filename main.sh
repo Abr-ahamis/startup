@@ -1,269 +1,162 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 
-# Recreated installer script for https://github.com/Abr-ahamis/startup.git
-# - Prompts for sudo up front and keeps it alive while the script runs
-# - Uses cp/mkdir/chmod (no rsync)
-# - Skips cloning if repository already exists
-# - Copies files only when source exists (safe)
-# - Attempts best-effort for optional installs; won't abort on those failures
-
-# --------------------------
-# Helpers & Logging
-# --------------------------
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log() { echo -e "${GREEN}[INFO]${NC} $*"; }
-warn() { echo -e "${YELLOW}[WARN]${NC} $*"; }
-err() { echo -e "${RED}[ERROR]${NC} $*"; }
-
-# Run a command but don't fail whole script (used for best-effort ops)
-try() { if ! eval "$*"; then warn "Command failed: $*"; fi }
-
-# Safely remove (best-effort)
-safe_rm() {
-    if [ -e "$1" ]; then
-        log "Removing $1"
-        sudo rm -rf "$1" || true
-    fi
-}
-
-# --------------------------
-# Request sudo up-front and keep session alive
-# --------------------------
-if ! command -v sudo >/dev/null 2>&1; then
-    err "sudo not found. Please install sudo and re-run this script as root or with sudo."
-    exit 1
+# make the scrip ask for sudo when it run 
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run with sudo"
+  exit
 fi
 
-echo "This script needs sudo privileges. You may be asked for your password."
-sudo -v || { err "Unable to obtain sudo credentials."; exit 1; }
-# keep-alive: update existing `sudo` time stamp until script finishes
-( while true; do sudo -v; sleep 60; done ) &
-SUDO_KEEPALIVE_PID=$!
-trap 'kill ${SUDO_KEEPALIVE_PID} 2>/dev/null || true' EXIT
+# Update package lists
+sudo apt update
 
-# --------------------------
-# Variables
-# --------------------------
-REPO_URL="https://github.com/Abr-ahamis/startup.git"
-CLONE_DIR="$HOME/Downloads/startup"
+# Install all required packages
+sudo apt install -y i3-wm i3blocks rofi pkexec polkitd xdotool dex acpi upower xfce4-power-manager i3lock xss-lock pulseaudio-utils brightnessctl feh picom fonts-font-awesome git rsync unzip curl wget
 
-PACKAGES=(
-  i3-wm i3blocks rofi pkexec polkitd xdotool dex acpi upower xfce4-power-manager
-  i3lock xss-lock pulseaudio-utils brightnessctl feh picom fonts-font-awesome
-  git rsync unzip curl wget grub-customizer timeshift
-)
+cd ~/Downloads
 
-# --------------------------
-# System update & package install
-# --------------------------
-log "Updating package lists..."
-sudo apt update -y
-
-log "Installing packages: ${PACKAGES[*]}"
-sudo apt install -y "${PACKAGES[@]}" || warn "apt install had some errors; script will continue."
-
-# --------------------------
-# Clone or update repo
-# --------------------------
-mkdir -p "${HOME}/Downloads"
-if [ -d "${CLONE_DIR}/.git" ]; then
-    log "Repository already exists at ${CLONE_DIR}; pulling latest changes..."
-    try git -C "${CLONE_DIR}" pull --ff-only
-else
-    log "Cloning repository to ${CLONE_DIR}..."
-    try git clone "${REPO_URL}" "${CLONE_DIR}"
+# check before cloneing the file is not oradey cloned  if it is it jump the cloning 
+if [ ! -d startup ]; then
+    git clone https://github.com/Abr-ahamis/startup.git
 fi
 
-# Allow script to continue even if clone/pull failed
+cd startup
 
-# --------------------------
-# Create target directories (user and system)
-# --------------------------
-log "Creating configuration directories..."
-mkdir -p "$HOME/.config/i3"
-mkdir -p "$HOME/.config/i3blocks/scripts"
-mkdir -p "$HOME/.config/rofi"
-mkdir -p "$HOME/.config/picom"
-mkdir -p "$HOME/.local/bin"
-mkdir -p "$HOME/.local/share/fonts"
-mkdir -p "$HOME/Pictures"
+# check the folder is orady created 
+# creat a script that check 
+# it backup the orignale and cope and past it 
+# (explanation: you are creating the config directories before copying)
 
+# Create configuration directories
+mkdir -p ~/.config/i3
+mkdir -p ~/.config/i3blocks/scripts
+mkdir -p ~/.config/rofi
+mkdir -p ~/.config/picom
+mkdir -p ~/.local/bin
+mkdir -p ~/.local/share/fonts
 sudo mkdir -p /usr/share/rofi/themes
-sudo mkdir -p /boot/grub/themes
-sudo mkdir -p /usr/share/grub/themes || true
 
-# --------------------------
-# Copy files from repo to target locations (user-level)
-# --------------------------
-log "Copying user configuration files (using cp)..."
+# make sure the files a all coped 
+sudo cp i3/usr/share/rofi/themes/Adapta-Nokto.rasi /usr/share/rofi/themes/Adapta-Nokto.rasi
+cp i3/.config/i3/config ~/.config/i3/config
+cp -r i3/.config/i3blocks/* ~/.config/i3blocks/
+cp -r i3/.config/rofi/* ~/.config/rofi/
+cp i3/.config/picom/picom.conf ~/.config/picom/picom.conf
+cp -r i3/.local/bin/* ~/.local/bin/
+cp -r i3/.local/share/fonts/* ~/.local/share/fonts/
 
-# Helper to copy if source exists
-safe_cp() {
-    local src="$1" dest="$2" use_sudo=${3:-0}
-    if [ -e "$src" ]; then
-        log "Copying: $src -> $dest"
-        if [ "$use_sudo" -eq 1 ]; then
-            sudo mkdir -p "$(dirname "$dest")"
-            sudo cp -r "$src" "$dest"
-        else
-            mkdir -p "$(dirname "$dest")"
-            cp -r "$src" "$dest"
-        fi
-    else
-        warn "Source not found, skipping: $src"
-    fi
-}
+cp wallpaper/wallpaper.jpg ~/Pictures/wallpaper.jpg
+sudo cp wallpaper/wallpaper.jpg /usr/share/backgrounds/kali/wallpaper.jpg
 
-# Rofi system theme (system path)
-safe_cp "$CLONE_DIR/usr/share/rofi/themes/Adapta-Nokto.rasi" "/usr/share/rofi/themes/Adapta-Nokto.rasi" 1
+# Make sure the folder exists
+sudo mkdir -p /usr/share/rofi/themes
+sudo rm -f /usr/share/rofi/themes/*
+# Copy theme if exists
+sudo cp i3/usr/share/rofi/themes/Adapta-Nokto.rasi /usr/share/rofi/themes/
 
-# i3 config
-safe_cp "$CLONE_DIR/i3/.config/i3/config" "$HOME/.config/i3/config"
+# Make i3blocks scripts executable
+chmod +x ~/.config/i3blocks/scripts/*.sh
 
-# i3blocks
-safe_cp "$CLONE_DIR/i3/.config/i3blocks/" "$HOME/.config/i3blocks/"
+# Make Rofi scripts executable
+find ~/.config/rofi -type f -name '*.sh' -exec chmod +x {} \;
 
-# rofi
-safe_cp "$CLONE_DIR/i3/.config/rofi/" "$HOME/.config/rofi/"
+# Make local bin scripts executable
+chmod +x ~/.local/bin/*
 
-# picom
-safe_cp "$CLONE_DIR/i3/.config/picom/picom.conf" "$HOME/.config/picom/picom.conf"
+fc-cache -fv
 
-# local bin
-safe_cp "$CLONE_DIR/i3/.local/bin/" "$HOME/.local/bin/"
+# Restart i3 (if running)
+i3-msg restart || true
 
-# fonts
-safe_cp "$CLONE_DIR/i3/.local/share/fonts/" "$HOME/.local/share/fonts/"
 
-# wallpapers (user)
-safe_cp "$CLONE_DIR/wallpaper/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+# 3️⃣ Apply GRUB themes
+safe_rm() { [ -e "$1" ] && sudo rm -rf "$1"; }
 
-# wallpapers (system) - many variants; do best-effort copies
-log "Copying wallpapers to /usr/share/backgrounds/kali (best-effort)..."
-if [ -d "$CLONE_DIR/wallpaper" ]; then
-    for f in "$CLONE_DIR/wallpaper"/*; do
-        [ -e "$f" ] || continue
-        base="$(basename "$f")"
-        sudo cp -f "$f" "/usr/share/backgrounds/kali/$base" 2>/dev/null || warn "Failed copying $f to system backgrounds"
-    done
-fi
-
-# --------------------------
-# GRUB themes
-# --------------------------
-log "Applying GRUB theme (best-effort)..."
-# Remove existing targets then copy
 safe_rm /boot/grub/themes/kali
-sudo mkdir -p /boot/grub/themes/kali
-if [ -d "$CLONE_DIR/grub" ]; then
-    sudo cp -r "$CLONE_DIR/grub/." /boot/grub/themes/kali/ || warn "Failed to copy grub theme files"
-    sudo mkdir -p /usr/share/grub/themes/kali
-    sudo cp -r /boot/grub/themes/kali/. /usr/share/grub/themes/kali/ || warn "Failed to copy grub themes to /usr/share"
-else
-    warn "No grub theme directory found in repo."
+sudo cp -r grub /boot/grub/themes/kali || echo "⚠️ grub theme copy failed."
+
+safe_rm /usr/share/grub/themes/kali
+sudo mkdir -p /usr/share/grub/themes
+sudo cp -r /boot/grub/themes/kali /usr/share/grub/themes || echo "⚠️ grub theme copy failed."
+
+# Copy new wallpapers
+sudo cp wallpaper/wallpaper-1.jpg /usr/share/backgrounds/kali/login.svg || true
+sudo cp wallpaper/wallpaper.jpg /usr/share/backgrounds/kali/kali-maze-16x9.jpg || true
+sudo cp wallpaper/wallpaper-2.jpg /usr/share/backgrounds/kali/kali-tiles-16x9.jpg || true
+sudo cp wallpaper/wallpaper-1.jpg /usr/share/backgrounds/kali/kali-waves-16x9.png || true
+sudo cp wallpaper/wallpaper.jpg /usr/share/backgrounds/kali/kali-oleo-16x9.png || true
+sudo cp wallpaper/wallpaper-2.jpg /usr/share/backgrounds/kali/kali-tiles-purple-16x9.jpg || true
+sudo cp wallpaper/wallpaper-1.jpg /usr/share/backgrounds/kali/login-blurred || true
+
+sudo apt install -y grub-customizer
+
+
+# Telegram
+safe_rm tsetup.tar.xz
+wget -q https://telegram.org/dl/desktop/linux -O /tmp/tsetup.tar.xz
+
+echo "📦 Extracting Telegram..."
+safe_rm /opt/Telegram
+sudo mkdir -p /opt/Telegram
+sudo tar -xf /tmp/tsetup.tar.xz -C /opt/Telegram --strip-components=1
+
+sudo chmod +x /opt/Telegram/Telegram
+
+if ! command -v telegram-desktop >/dev/null 2>&1; then
+    sudo ln -sf /opt/Telegram/Telegram /usr/local/bin/telegram-desktop
 fi
 
-# --------------------------
-# Make scripts executable
-# --------------------------
-log "Setting executable permissions for scripts..."
-find "$HOME/.config/i3blocks" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
-find "$HOME/.config/rofi" -type f -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
-find "$HOME/.local/bin" -type f -exec chmod +x {} \; 2>/dev/null || true
+/opt/Telegram/Telegram >/dev/null 2>&1 &
 
-# --------------------------
-# Rebuild font cache
-# --------------------------
-log "Rebuilding font cache..."
-fc-cache -fv || warn "fc-cache failed"
 
-# --------------------------
-# Restart i3 if running
-# --------------------------
-if pgrep -x "i3" >/dev/null 2>&1; then
-    log "Restarting i3..."
-    try i3-msg restart
-else
-    log "i3 not running; changes will apply at next login."
-fi
+# Brave Nightly
+echo "🦁 Installing Brave Nightly..."
+{
+    curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly bash
+    sudo apt-get install -y brave-browser-nightly || echo "⚠️ Brave install failed."
+} || echo "⚠️ Brave setup script failed."
 
-# Set wallpaper immediately if feh present
-if command -v feh >/dev/null 2>&1 && [ -f "$HOME/Pictures/wallpaper.jpg" ]; then
-    try feh --bg-scale "$HOME/Pictures/wallpaper.jpg"
-fi
 
-# --------------------------
-# Telegram (desktop) install to /opt/Telegram
-# --------------------------
-log "Installing Telegram Desktop (best-effort)..."
-TMP_TG="/tmp/tsetup.tar.xz"
-try rm -f "$TMP_TG"
-try wget -q https://telegram.org/dl/desktop/linux -O "$TMP_TG" || true
-if [ -f "$TMP_TG" ]; then
-    safe_rm /opt/Telegram
-    sudo mkdir -p /opt/Telegram
-    sudo tar -xf "$TMP_TG" -C /opt/Telegram --strip-components=1 || warn "Telegram extract failed"
-    sudo chmod +x /opt/Telegram/Telegram || true
-    if ! command -v telegram-desktop >/dev/null 2>&1; then
-        sudo ln -sf /opt/Telegram/Telegram /usr/local/bin/telegram-desktop || true
+# Pin Brave in GNOME favorites (fix: gsettings, not gset)
+for entry in brave-browser.desktop brave-browser-nightly.desktop brave.desktop; do
+    if [ -f "/usr/share/applications/$entry" ]; then
+        desktop="$entry"
+        break
     fi
-    # Launch in background (no hang)
-    /opt/Telegram/Telegram >/dev/null 2>&1 &
-else
-    warn "Telegram package not downloaded; skipping Telegram installation."
+done
+
+if [ -n "${desktop:-}" ]; then
+    favs=$(gsettings get org.gnome.shell favorite-apps) || favs=""
+    if [[ $favs != *"$desktop"* ]]; then
+        new=$(echo "$favs" | sed "s/]$/, '$desktop']/") || new="$favs"
+        gsettings set org.gnome.shell favorite-apps "$new" || true
+    fi
 fi
 
-# --------------------------
-# Brave (nightly) - best-effort install
-# --------------------------
-log "Installing Brave (nightly) - best-effort..."
-try bash -c "curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly bash" || warn "Brave install script failed"
-try sudo apt-get install -y brave-browser-nightly || warn "brave-browser-nightly apt install failed"
 
-# --------------------------
-# ProtonVPN (best-effort)
-# --------------------------
-log "Installing ProtonVPN (best-effort)..."
-try wget -q https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_1.0.8_all.deb -O /tmp/protonvpn.deb || true
-try sudo dpkg -i /tmp/protonvpn.deb || true
-try sudo apt update || true
-try sudo apt install -y proton-vpn-gnome-desktop libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 gnome-shell-extension-appindicator || true
+# Install ProtonVPN
+echo "🔐 Installing ProtonVPN..."
+wget -q https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_1.0.8_all.deb -O /tmp/protonvpn.deb || true
+sudo dpkg -i /tmp/protonvpn.deb || true
+sudo apt update
+sudo apt install -y proton-vpn-gnome-desktop libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 gnome-shell-extension-appindicator || true
+nohup protonvpn-app >/dev/null 2>&1 || true
 
-# --------------------------
-# Visual Studio Code (best-effort)
-# --------------------------
-log "Installing Visual Studio Code (best-effort)..."
-try cd /tmp
-try wget -q "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64" -O code.deb || true
-try sudo dpkg -i code.deb || try sudo apt-get install -f -y || true
-try rm -f code.deb || true
 
-# --------------------------
-# RustScan (best-effort)
-# --------------------------
-log "Installing RustScan (best-effort)..."
-try cd /tmp
-try wget -q https://github.com/RustScan/RustScan/releases/latest/download/rustscan_2.2.3_amd64.deb -O rustscan.deb || true
-try sudo dpkg -i rustscan.deb || try sudo apt-get install -f -y || true
-try rm -f rustscan.deb || true
+# Install VS Code
+echo "💻 Installing Visual Studio Code..."
+cd /tmp
+wget -q "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64" -O code.deb || true
+sudo dpkg -i code.deb || sudo apt-get install -f -y || true
+rm -f code.deb
+nohup code >/dev/null 2>&1 || true
 
-# --------------------------
-# Final package installs that are safe
-# --------------------------
-try sudo apt-get install -y grub-customizer timeshift || warn "grub-customizer/timeshift installation had issues"
 
-# --------------------------
-# Final message
-# --------------------------
-log "All done — some operations were best-effort and may have warnings above."
-echo
-echo -e "${GREEN}==========================================${NC}"
-echo -e "${GREEN}   Installation script finished   ${NC}"
-echo -e "${GREEN}==========================================${NC}"
+# Install RustScan
+echo "🔍 Installing RustScan..."
+cd /tmp
+wget -q https://github.com/RustScan/RustScan/releases/download/2.2.3/rustscan_2.2.3_amd64.deb || true
+sudo dpkg -i rustscan_2.2.3_amd64.deb || sudo apt-get install -f -y || true
+ulimit -n 5000 || true
 
-echo "If you want any step to be more strict (fail on error) or to change locations, tell me and I will update the script."
+
+sudo apt-get install -y grub-customizer timeshift
