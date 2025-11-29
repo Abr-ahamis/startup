@@ -4,7 +4,8 @@
 while :
 do
     # Format: | YYYY-MM-DD | HH : MM |
-    TIME=$(date "+| %Y-%m-%d")
+    TIME=$(date " %H : %M")
     echo "$TIME"
     sleep 60
 done
+

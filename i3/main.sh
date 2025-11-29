@@ -32,6 +32,8 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 log_info "Updating package lists and installing required tools..."
 
 # Update apt
+gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false
+
 sudo apt update
 
 # Install dependencies
@@ -129,7 +131,7 @@ rsync -av "$CLONE_DIR/.local/share/fonts/" "$HOME/.local/share/fonts/"
 # 4.7 Wallpaper (Copied to ~/Pictures/wallpaper.jpg)
 if [ -f "$CLONE_DIR/wallpaper.jpg" ]; then
     log_info "-> Installing Wallpaper..."
-    cp "$CLONE_DIR/wallpaper.jpg" "$HOME/Pictures/wallpaper.jpg"
+    cp "$CLONE_DIR/wallpaper.jpg" "/usr/share/backgounds/kali/wallpaper.jpg"
 fi
 
 # 4.8 System-wide Rofi Theme (Requires Sudo)
