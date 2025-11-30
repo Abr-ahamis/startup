@@ -1,18 +1,26 @@
 #!/usr/bin/env python3
 """
-startup_setup.py — Interactive version (Option A multi-select menu + GRUB prompt)
+run this in the termainl 
 
-
+PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default | tr -d \')
+# Remove menubar
+gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" default-show-menubar false
+# Set font size to 9
+gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" font 'Monospace 9'
+# Enable transparent background and set transparency to 20%
+gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" use-transparent-background true
+gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" background-transparency-percent 20
 
 sudo apt install nemo  
 sudo apt install lxappearance
 
+"""
 
 
-
+"""
+startup_setup.py — Interactive version (Option A multi-select menu + GRUB prompt)
 Usage:
     sudo python3 startup_setup.py
-
 Features:
 - Detect or clone 'startup' repo.
 - Copy i3/rofi/picom/i3blocks configs into user's home (backups made).
