@@ -238,6 +238,6 @@ bindsym $mod+shift+x exec i3lock --color 475263
 # autostart 
 #exec firefox
 # wallpaper background
-exec_always feh --bg-scale /usr/share/backgrounds/kali/wallpaper.jpg
+exec_always feh --bg-scale /usr/share/backgrounds/kali/wallpaper-1.jpg
 
 exec_always --no-startup-id picom --config ~/.config/picom/picom.conf
