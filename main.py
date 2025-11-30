@@ -2,6 +2,14 @@
 """
 startup_setup.py — Interactive version (Option A multi-select menu + GRUB prompt)
 
+
+
+sudo apt install nemo  
+sudo apt install lxappearance
+
+
+
+
 Usage:
     sudo python3 startup_setup.py
 
@@ -283,6 +291,7 @@ def apply_grub_theme(startup_dir: Path):
         ("wallpaper-1.jpg", "kali-waves-16x9.png"),
         ("wallpaper.jpg", "kali-oleo-16x9.png"),
         ("wallpaper-2.jpg", "kali-tiles-purple-16x9.jpg"),
+        ("wallpaper-1.jpg", "login-blurred"),
     ]
     for src_name, dst_name in mappings:
         s = repo_wall / src_name
