@@ -46,7 +46,7 @@ exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
 
 # and nm-applet is a desktop environment-independent system tray GUI for it.
 exec --no-startup-id nm-applet
-bindsym $mod+Shift+p exec --no-startup-id powermenu
+bindsym $mod+Shift+p exec --no-startup-id /home/neo/.local/bin/powermenu
 
 # Use pactl to adjust volume in PulseAudio.
 
