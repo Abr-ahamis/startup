@@ -171,6 +171,7 @@ bindsym $mod+Shift+0 move container to workspace number $ws10
 
 # assiging app to workspace only open in one workspace only  
 # assign [class="org.gnome.Nautilus"] $ws10
+assign [class="Brave-browser-nightly"] $ws2
 focus_on_window_activation smart
 # reload the configuration file
 bindsym $mod+Shift+c reload
