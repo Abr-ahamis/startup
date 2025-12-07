@@ -10,6 +10,10 @@ font pango:Font Awesome 7 Free, Font Awesome 7 Brands, DejaVu Sans Mono 7
 # screen before suspend. Use loginctl lock-session to lock your screen.
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
 
+# remove the bar in terminal 
+exec_always gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false
+
+
 # ------------------------------------------------------------
 # i3 Gaps Configuration
 # ------------------------------------------------------------
