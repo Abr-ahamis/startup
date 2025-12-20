@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Network block that reads GNOME-exporter network rates from JSON if available
-JSON=/tmp/gnome_status.json
-SAMPLE=0.4  # sub-second responsiveness
+SAMPLE_SECS="${SAMPLE_SECS:-0.6}"   # seconds between samples
+SMOOTH_ALPHA="${SMOOTH_ALPHA:-0.35}" # smoothing factor [0..1], higher = more responsive
+ONCE=1   # i3blocks expects a single output, so we'll run one sample per execution
 
+# human-readable bytes/sec
 human_rate() {
-  local bps=$1
-  if [[ -z "$bps" ]]; then echo "0 B/s"; return; fi
-  # use awk formatting like your example
+  local bps="$1"
   awk -v bps="$bps" 'BEGIN{
     if (bps < 0) bps = 0
     if (bps < 1000) {
@@ -21,43 +20,60 @@ human_rate() {
   }'
 }
 
-while true; do
-  if [[ -r "$JSON" ]]; then
-    # If the exporter already computes down_bps/up_bps, use them:
-    down=$(jq -r '.network.down_bps // empty' "$JSON" 2>/dev/null)
-    up=$(jq -r '.network.up_bps // empty' "$JSON" 2>/dev/null)
-    if [[ -n "$down" && -n "$up" ]]; then
-      DOWN=$(human_rate "$down")
-      UP=$(human_rate "$up")
-      IF=$(jq -r '.network.ifname // "?"' "$JSON" 2>/dev/null)
-      IP=$(jq -r '.network.ip // "-" ' "$JSON" 2>/dev/null)
-      echo "↑ $UP    ↓ $DOWN    |    $IP   ($IF)"
-      echo ""
-      sleep "$SAMPLE"
-      continue
-    fi
+# pick interface
+pick_iface() {
+  local tun_if
+  tun_if=$(ip -o -4 addr show | awk '$2 ~ /^tun|^tap/ {print $2; exit}')
+  [[ -n "$tun_if" ]] && { printf '%s' "$tun_if"; return 0; }
+
+  if ip -o -4 addr show dev wlan0 >/dev/null 2>&1; then
+    printf 'wlan0'
+    return 0
   fi
 
-  # Fallback: compute local deltas using /sys/class/net for first suitable iface
-  # pick iface (wlan0, eth0, or first global IPv4)
-  IFACE=$(ip -o -4 addr show scope global | awk '{print $2; exit}')
-  [[ -z "$IFACE" ]] && { echo "No net"; echo ""; sleep "$SAMPLE"; continue; }
+  local any_if
+  any_if=$(ip -o -4 addr show scope global | awk '{print $2; exit}')
+  [[ -n "$any_if" ]] && { printf '%s' "$any_if"; return 0; }
+  return 1
+}
 
-  RX1=$(cat /sys/class/net/"$IFACE"/statistics/rx_bytes 2>/dev/null || echo 0)
-  TX1=$(cat /sys/class/net/"$IFACE"/statistics/tx_bytes 2>/dev/null || echo 0)
-  sleep 0.4
-  RX2=$(cat /sys/class/net/"$IFACE"/statistics/rx_bytes 2>/dev/null || echo 0)
-  TX2=$(cat /sys/class/net/"$IFACE"/statistics/tx_bytes 2>/dev/null || echo 0)
+# read counter
+read_counter() {
+  local iface="$1" which="$2"
+  local path="/sys/class/net/${iface}/statistics/${which}_bytes"
+  [[ -r "$path" ]] && cat "$path" 2>/dev/null || echo 0
+}
 
-  rx_delta=$((RX2 - RX1))
-  tx_delta=$((TX2 - TX1))
-  elapsed=0.4
-  RX_BPS=$((rx_delta / elapsed))
-  TX_BPS=$((tx_delta / elapsed))
-  DOWN=$(human_rate "$RX_BPS")
-  UP=$(human_rate "$TX_BPS")
-  IP=$(ip -4 addr show dev "$IFACE" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1)
-  echo "↑ $UP    ↓ $DOWN    |    $IP   ($IFACE)"
-  echo ""
-  sleep "$SAMPLE"
-done
+# get IP
+get_ip() {
+  local iface="$1"
+  ip -4 addr show dev "$iface" 2>/dev/null | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1
+}
+
+# --- main ---
+IFACE=$(pick_iface) || IFACE=""
+[ -z "$IFACE" ] && { echo "No net"; exit 0; }
+
+RX1=$(read_counter "$IFACE" rx)
+TX1=$(read_counter "$IFACE" tx)
+sleep "$SAMPLE_SECS"
+RX2=$(read_counter "$IFACE" rx)
+TX2=$(read_counter "$IFACE" tx)
+
+elapsed=$(awk -v t1="$RX1" -v t2="$RX2" -v s="$SAMPLE_SECS" 'BEGIN{printf "%.6f", s}')
+rx_delta=$((RX2 - RX1))
+tx_delta=$((TX2 - TX1))
+
+# smoothing
+sm_rx=$(awk -v s="$SMOOTH_ALPHA" -v prev="$rx_delta" -v cur="$rx_delta" 'BEGIN{printf "%.6f", s*cur + (1-s)*prev}')
+sm_tx=$(awk -v s="$SMOOTH_ALPHA" -v prev="$tx_delta" -v cur="$tx_delta" 'BEGIN{printf "%.6f", s*cur + (1-s)*prev}')
+
+RX_BPS=$(awk -v d="$sm_rx" -v e="$elapsed" 'BEGIN{printf "%.0f", d / e}')
+TX_BPS=$(awk -v d="$sm_tx" -v e="$elapsed" 'BEGIN{printf "%.0f", d / e}')
+
+DOWN=$(human_rate "$RX_BPS")
+UP=$(human_rate "$TX_BPS")
+IP=$(get_ip "$IFACE")
+
+# --- output for i3blocks ---
+echo "↑ $UP    ↓ $DOWN    |    $IP   ($IFACE)"
