@@ -3,10 +3,6 @@
 separator_block_width=15
 markup=pango
 
-#[time]
-#command=~/.config/i3blocks/scripts/time.sh
-#interval=persist
-
 [network]
 command=~/.config/i3blocks/scripts/network.sh
 interval=1
@@ -29,20 +25,8 @@ min_width=CPU: 100%
 command=~/.config/i3blocks/scripts/date.sh
 interval=persist
 
-[Unit]
-Description=Battery monitor notifications
 
-[Service]
-Type=simple
-ExecStart=%h/.local/bin/battery.sh
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=default.target
-
-
-#[battery]
-#command=~/.config/i3blocks/scripts/battery.sh
-#interval=30
+[battery]
+command=~/.config/i3blocks/scripts/battery.sh
+interval=30
 
