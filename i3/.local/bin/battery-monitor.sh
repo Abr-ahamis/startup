@@ -9,7 +9,7 @@
 set -euo pipefail
 
 # config
-SLEEP_INTERVAL=8          # seconds between checks
+SLEEP_INTERVAL=1         # seconds between checks
 THRESHOLDS=(40 30 20 10)  # notify when capacity <= threshold, in this order
 
 # helpers
