@@ -1,18 +1,16 @@
-
 set $mod Mod4
 
 # Font for window titles. Will also be used by the bar unless a different font
-
 font pango:Font Awesome 7 Free, Font Awesome 7 Brands, DejaVu Sans Mono 7
 
 # Start XDG autostart .desktop files using dex. See also
+exec --no-startup-id dex --autostart --environment i3
 
 # screen before suspend. Use loginctl lock-session to lock your screen.
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
 
-# remove the bar in terminal 
-exec_always gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false
-
+# remove the bar in terminal (run once on startup)
+exec --no-startup-id gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false
 
 # ------------------------------------------------------------
 # i3 Gaps Configuration
@@ -41,19 +39,11 @@ gaps right 1px
 #   - 'inverse_outer' keeps outer gaps only when one window is present
 smart_gaps on
 
-
-
-exec --no-startup-id dex --autostart --environment i3
-
-# screen before suspend. Use loginctl lock-session to lock your screen.
-exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
-
 # and nm-applet is a desktop environment-independent system tray GUI for it.
 exec --no-startup-id nm-applet
 bindsym $mod+Shift+p exec --no-startup-id /home/neo/.local/bin/powermenu
 
 # Use pactl to adjust volume in PulseAudio.
-
 bindsym Mod1+F7 exec pactl set-sink-volume @DEFAULT_SINK@ +5%   # Volume up
 bindsym Mod1+F6 exec pactl set-sink-volume @DEFAULT_SINK@ -5%   # Volume down
 bindsym Mod1+F8 exec pactl set-sink-mute @DEFAULT_SINK@ toggle
@@ -76,13 +66,13 @@ bindsym Shift+e exec nautilus
 bindsym Shift+f exec firefox
 bindsym Shift+b exec brave-browser
 
-
 # kill focused window
 bindsym $mod+Shift+q kill
 
 # start dmenu (a program launcher)
 bindsym $mod+d exec rofi -show drun
 bindsym $mod+Shift+d exec rofi -show run
+
 # change focus
 bindsym $mod+j focus left
 bindsym $mod+k focus down
@@ -149,34 +139,35 @@ set $ws8 "8:"
 set $ws9 "9:"
 set $ws10 "10:"
 
-# switch to workspac00000e
-bindsym $mod+1 workspace number $ws1
-bindsym $mod+2 workspace number $ws2
-bindsym $mod+3 workspace number $ws3
-bindsym $mod+4 workspace number $ws4
-bindsym $mod+5 workspace number $ws5
-bindsym $mod+6 workspace number $ws6
-bindsym $mod+7 workspace number $ws7
-bindsym $mod+8 workspace number $ws8
-bindsym $mod+9 workspace number $ws9
-bindsym $mod+0 workspace number $ws10
+# switch to workspace (fixed: use workspace $wsX, not workspace number with a string)
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+5 workspace $ws5
+bindsym $mod+6 workspace $ws6
+bindsym $mod+7 workspace $ws7
+bindsym $mod+8 workspace $ws8
+bindsym $mod+9 workspace $ws9
+bindsym $mod+0 workspace $ws10
 
-# move focused container to workspace
-bindsym $mod+Shift+1 move container to workspace number $ws1
-bindsym $mod+Shift+2 move container to workspace number $ws2
-bindsym $mod+Shift+3 move container to workspace number $ws3
-bindsym $mod+Shift+4 move container to workspace number $ws4
-bindsym $mod+Shift+5 move container to workspace number $ws5
-bindsym $mod+Shift+6 move container to workspace number $ws6
-bindsym $mod+Shift+7 move container to workspace number $ws7
-bindsym $mod+Shift+8 move container to workspace number $ws8
-bindsym $mod+Shift+9 move container to workspace number $ws9
-bindsym $mod+Shift+0 move container to workspace number $ws10
+# move focused container to workspace (fixed same as above)
+bindsym $mod+Shift+1 move container to workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4
+bindsym $mod+Shift+5 move container to workspace $ws5
+bindsym $mod+Shift+6 move container to workspace $ws6
+bindsym $mod+Shift+7 move container to workspace $ws7
+bindsym $mod+Shift+8 move container to workspace $ws8
+bindsym $mod+Shift+9 move container to workspace $ws9
+bindsym $mod+Shift+0 move container to workspace $ws10
 
-# assiging app to workspace only open in one workspace only  
+# assigning app to workspace only open in one workspace only  
 # assign [class="org.gnome.Nautilus"] $ws10
 assign [class="Brave-browser-nightly"] $ws2
 focus_on_window_activation smart
+
 # reload the configuration file
 bindsym $mod+Shift+c reload
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
@@ -186,7 +177,6 @@ bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcu
 
 # resize window (you can also use the mouse for that)
 mode "resize" {
-
         bindsym j resize shrink width 10 px or 10 ppt
         bindsym k resize grow height 10 px or 10 ppt
         bindsym l resize shrink height 10 px or 10 ppt
@@ -203,7 +193,6 @@ mode "resize" {
         bindsym Escape mode "default"
         bindsym $mod+r mode "default"
 }
-
 bindsym $mod+r mode "resize"
 
 # color sets
@@ -213,8 +202,7 @@ set $text-color          #f3f4f5
 set $inactive-text-color #676E7D
 set $urgent-bg-color     #E53935
 
-# Start i3bar to display a workspace bar (plus the system information i3status
-# finds out, if available)
+# Start i3bar to display a workspace bar (plus the system information i3status finds out, if available)
 bar {
         position top
         status_command i3blocks -c ~/.config/i3blocks/config
@@ -227,8 +215,7 @@ bar {
 		urgent_workspace   $urgent-bg-color   $urgent-bg-color   $text-color
 	}
 
-        font pango:font pango:JetBrainsMono Nerd Font 8, Material Icons 6
-
+        font pango:JetBrainsMono Nerd Font 8, Material Icons 6
 }
 
 # window colors
@@ -242,7 +229,9 @@ bindsym $mod+shift+x exec i3lock --color 475263
 
 # autostart 
 #exec firefox
-# wallpaper background
-exec_always feh --bg-scale /usr/share/backgrounds/kali/wallpaper-1.jpg
 
-exec_always --no-startup-id picom --config ~/.config/picom/picom.conf
+# wallpaper background (start once)
+exec --no-startup-id feh --bg-scale /usr/share/backgrounds/kali/wallpaper-1.jpg
+
+# start picom once
+exec --no-startup-id picom --config ~/.config/picom/picom.conf
