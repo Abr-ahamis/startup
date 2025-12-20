@@ -34,7 +34,7 @@ Description=Battery monitor notifications
 
 [Service]
 Type=simple
-ExecStart=%h/.local/bin/battery-monitor.sh
+ExecStart=%h/.local/bin/battery.sh
 Restart=always
 RestartSec=5
 
