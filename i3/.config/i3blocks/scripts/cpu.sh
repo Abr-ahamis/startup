@@ -1,39 +1,33 @@
-#!/usr/bin/env bash
-# CPU block that reads cpu_percent from GNOME exported JSON or falls back to /proc/stat
-JSON=/tmp/gnome_status.json
-SAMPLE=0.6
+#!/bin/bash
+
+SAMPLE=0.8   # refresh rate in seconds
+
+# function to read CPU values
+read_cpu() {
+    read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
+    echo "$user $nice $system $idle $iowait $irq $softirq $steal"
+}
+
+prev=($(read_cpu))
 
 while true; do
-  if [[ -r "$JSON" ]]; then
-    cpu=$(jq -r '.cpu_percent // -1' "$JSON" 2>/dev/null)
-    if [[ "$cpu" -ge 0 ]]; then
-      echo " CPU ${cpu}%"
-      echo ""
-      sleep "$SAMPLE"
-      continue
-    fi
-  fi
+    sleep $SAMPLE
+    curr=($(read_cpu))
 
-  # Fallback: compute from /proc/stat (fast single sample)
-  # A tiny in-script sampler (not ideal for absolute precision but okay)
-  read -r cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
-  prev_total=$((user+nice+system+idle+iowait+irq+softirq+steal))
-  prev_idle=$((idle + iowait))
-  sleep 0.4
-  read -r cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat
-  total=$((user+nice+system+idle+iowait+irq+softirq+steal))
-  idle_now=$((idle + iowait))
+    # extract values
+    prev_idle=$((prev[3] + prev[4]))
+    prev_total=$((${prev[0]} + ${prev[1]} + ${prev[2]} + ${prev[3]} + ${prev[4]} + ${prev[5]} + ${prev[6]} + ${prev[7]}))
 
-  diff_total=$((total - prev_total))
-  diff_idle=$((idle_now - prev_idle))
+    idle_now=$((curr[3] + curr[4]))
+    total_now=$((${curr[0]} + ${curr[1]} + ${curr[2]} + ${curr[3]} + ${curr[4]} + ${curr[5]} + ${curr[6]} + ${curr[7]}))
 
-  if [[ $diff_total -gt 0 ]]; then
-    cpu_usage=$(( (100 * (diff_total - diff_idle)) / diff_total ))
-  else
-    cpu_usage=0
-  fi
+    diff_total=$((total_now - prev_total))
+    diff_idle=$((idle_now - prev_idle))
 
-  echo " CPU ${cpu_usage}%"
-  echo ""
-  sleep "$SAMPLE"
+    cpu_usage=$(awk -v idle="$diff_idle" -v total="$diff_total" \
+        'BEGIN { printf "%3.0f", 100 * (1 - idle/total) }')
+
+    echo " CPU ${cpu_usage}%"
+    echo ""   # empty line for short_text (required)
+    prev=("${curr[@]}")
 done
