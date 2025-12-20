@@ -29,8 +29,20 @@ min_width=CPU: 100%
 command=~/.config/i3blocks/scripts/date.sh
 interval=persist
 
+[Unit]
+Description=Battery monitor notifications
 
-[battery]
-command=~/.config/i3blocks/scripts/battery.sh
-interval=30
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/battery-monitor.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+
+
+#[battery]
+#command=~/.config/i3blocks/scripts/battery.sh
+#interval=30
 
