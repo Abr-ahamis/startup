@@ -37,7 +37,7 @@ gaps right 1px
 # Enable Smart Gaps:
 #   - 'on' removes gaps when only one window is present
 #   - 'inverse_outer' keeps outer gaps only when one window is present
-smart_gaps on
+smart_gaps off
 
 # and nm-applet is a desktop environment-independent system tray GUI for it.
 exec --no-startup-id nm-applet
