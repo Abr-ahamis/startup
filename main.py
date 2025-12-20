@@ -27,7 +27,6 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 import pwd
-import grp
 
 # ----------------------
 # CONFIG
@@ -123,9 +122,6 @@ def ensure_dir(p: Path, mode: int = 0o755):
 def unique_backup_name(p: Path) -> Path:
     """
     Return a backup path with '.backup' appended. If that exists, append timestamp.
-    Examples:
-      ~/.config/i3/config -> ~/.config/i3/config.backup
-      if exists -> config.backup.20251220-123456
     """
     base = p.with_name(p.name + ".backup")
     if not base.exists():
@@ -144,7 +140,6 @@ def backup_existing(dst: Path) -> Optional[Path]:
             return None
         b = unique_backup_name(dst)
         log.info(f"[BACKUP] Renaming existing {dst} -> {b}")
-        # Use shutil.move for directories and files
         shutil.move(str(dst), str(b))
         return b
     except Exception as e:
@@ -175,12 +170,6 @@ def chown_recursive(path: Path, user: str):
 def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: bool = False) -> bool:
     """
     Copy src -> dst with safety:
-      - if src doesn't exist: skip and return False
-      - ensure dst.parent exists
-      - if dst exists and make_backup=True: rename existing to .backup
-      - for directories use copytree (dirs_exist_ok available on py3.8+)
-      - preserve file metadata where possible
-      - set ownership to target user
     """
     src = Path(src)
     dst = Path(dst)
@@ -192,7 +181,6 @@ def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: boo
         if make_backup:
             backup_existing(dst)
         else:
-            # remove existing if not backing up
             if dst.is_dir():
                 log.info(f"[RM-EXIST] Removing existing dir {dst}")
                 shutil.rmtree(dst, ignore_errors=True)
@@ -205,12 +193,10 @@ def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: boo
     try:
         if src.is_dir():
             log.info(f"[COPY-DIR] {src} -> {dst}")
-            # copytree with dirs_exist_ok if available
             shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
         else:
             log.info(f"[COPY-FILE] {src} -> {dst}")
             shutil.copy2(src, dst)
-        # Ensure ownership is set to the target user for copied files
         try:
             chown_recursive(dst, TARGET_USER)
         except Exception:
@@ -235,7 +221,6 @@ def require_root():
 def detect_or_clone_repo() -> Path:
     cwd = Path.cwd()
     log.info(f"Working directory: {cwd}")
-    # If i3 and grub and wallpaper exist here -> treat cwd as repo
     if (cwd / "i3").is_dir() and (cwd / "grub").is_dir() and (cwd / "wallpaper").is_dir():
         log.info("[INFO] Found startup files in current directory; using current dir as startup repo.")
         return cwd
@@ -247,8 +232,8 @@ def detect_or_clone_repo() -> Path:
         log.info(f"[INFO] {target} exists; using it.")
         return target
     log.info(f"[INFO] Cloning {REPO_URL} -> {target}")
-    r = run(["git", "clone", REPO_URL, str(target)], check=False, capture_output=False)
-    if isinstance(r, subprocess.CalledProcessError) or getattr(r, "returncode", 0) != 0:
+    r = run(["git", "clone", REPO_URL, str(target)], check=False, capture_output=True)
+    if getattr(r, "returncode", 1) != 0:
         log.warning("[WARN] git clone returned non-zero; continuing in case repo exists locally.")
     return target
 
@@ -257,20 +242,13 @@ def detect_or_clone_repo() -> Path:
 # APT package installation
 # ----------------------
 def install_apt_packages(packages: List[str]):
-    """
-    Install packages with apt non-interactively. Runs apt update first.
-    Uses DEBIAN_FRONTEND=noninteractive to minimize prompts, and
-    sets PATH/ENV minimally for safety.
-    """
     if not packages:
         log.info("[APT] No packages to install.")
         return
     env = os.environ.copy()
     env["DEBIAN_FRONTEND"] = "noninteractive"
-    # update
     log.info("[APT] Running apt update...")
     run(["apt", "update"], check=False, env=env)
-    # install in one command
     cmd = ["apt", "install", "-y"] + packages
     log.info(f"[APT] Installing packages: {len(packages)} items")
     run(cmd, check=False, env=env)
@@ -282,16 +260,11 @@ def install_apt_packages(packages: List[str]):
 def copy_core_configs(startup_dir: Path):
     log.info("[COPY] Copying configs from repo...")
     repo_i3 = startup_dir / "i3"
-    # i3 config file
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config", make_backup=True)
-    # i3blocks directory
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", make_backup=True, dirs_exist_ok=True)
-    # rofi
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", make_backup=True, dirs_exist_ok=True)
-    # picom
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf", make_backup=True)
 
-    # local bin (scripts)
     src_local_bin = repo_i3 / ".local" / "bin"
     dst_local_bin = USER_HOME / ".local" / "bin"
     ensure_dir(dst_local_bin)
@@ -299,7 +272,6 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_local_bin.iterdir()):
             safe_copy(f, dst_local_bin / f.name, make_backup=True)
 
-    # fonts
     src_fonts = repo_i3 / ".local" / "share" / "fonts"
     dst_fonts = USER_HOME / ".local" / "share" / "fonts"
     ensure_dir(dst_fonts)
@@ -322,10 +294,8 @@ def copy_core_configs(startup_dir: Path):
         log.info("[PATH] .bashrc not found, creating one with PATH line.")
         with open(bashrc, "w") as fh:
             fh.write(f"{path_line}\n")
-    # Also update current process env so subsequent operations see it
     os.environ["PATH"] = str(USER_HOME / ".local" / "bin") + ":" + os.environ.get("PATH", "")
 
-    # system rofi themes
     src_rofi_sys = repo_i3 / "usr" / "share" / "rofi" / "themes"
     dst_rofi_sys = Path("/usr/share/rofi/themes")
     ensure_dir(dst_rofi_sys)
@@ -333,7 +303,6 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_rofi_sys.iterdir()):
             safe_copy(f, dst_rofi_sys / f.name, make_backup=True)
 
-    # wallpapers
     repo_wall = startup_dir / "wallpaper"
     ensure_dir(USER_HOME / "Pictures")
     for name in ("wallpaper.jpg", "wallpaper-1.jpg", "wallpaper-2.jpg"):
@@ -346,6 +315,86 @@ def copy_core_configs(startup_dir: Path):
                 shutil.copy2(s, backgrounds_dir / name)
             except Exception as e:
                 log.warning(f"[WARN] copying wallpaper to system backgrounds failed: {e}")
+
+
+# ----------------------
+# Install battery monitor (script + systemd --user service)
+# ----------------------
+def install_battery_monitor(startup_dir: Path):
+    """
+    Install battery-monitor script and user systemd service from the repo into the
+    target user's home and attempt to enable & start the service by running:
+      systemctl --user daemon-reload && systemctl --user enable --now battery-monitor.service
+    as the target user with XDG_RUNTIME_DIR set to /run/user/<UID>.
+    """
+    repo_script = startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh"
+    repo_service = startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service"
+
+    dst_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
+    dst_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
+
+    # Copy script
+    if repo_script.exists():
+        ensure_dir(dst_script.parent)
+        if safe_copy(repo_script, dst_script, make_backup=True):
+            try:
+                dst_script.chmod(0o755)
+            except Exception:
+                pass
+            try:
+                chown_recursive(dst_script, TARGET_USER)
+            except Exception:
+                pass
+            log.info("[BATTERY] Installed battery-monitor script to %s", dst_script)
+    else:
+        log.info("[BATTERY] No battery-monitor script found in repo (%s). Skipping script install.", repo_script)
+
+    # Copy user service
+    if repo_service.exists():
+        ensure_dir(dst_service.parent)
+        if safe_copy(repo_service, dst_service, make_backup=True):
+            try:
+                chown_recursive(dst_service, TARGET_USER)
+            except Exception:
+                pass
+            log.info("[BATTERY] Installed battery-monitor user service to %s", dst_service)
+    else:
+        log.info("[BATTERY] No battery-monitor.service found in repo (%s). Skipping service install.", repo_service)
+
+    # Now attempt to run the exact command as the target user:
+    # systemctl --user daemon-reload && systemctl --user enable --now battery-monitor.service
+    try:
+        pw = pwd.getpwnam(TARGET_USER)
+        uid = pw.pw_uid
+        runtime_dir = Path(f"/run/user/{uid}")
+        if not runtime_dir.exists():
+            log.warning("[BATTERY] /run/user/%d does not exist. The target user may not have an active login session; systemctl --user may fail.", uid)
+        # Build the exact command string the user requested, with XDG_RUNTIME_DIR set
+        cmd_str = (
+            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload && "
+            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user enable --now battery-monitor.service"
+        )
+        log.info("[BATTERY] Running systemctl --user commands as user %s", TARGET_USER)
+        # run via sudo -u TARGET_USER bash -lc '...'
+        r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd_str], check=False, capture_output=True)
+        rc = getattr(r, "returncode", 1)
+        stdout = getattr(r, "stdout", "")
+        stderr = getattr(r, "stderr", "")
+        if rc == 0:
+            log.info("[BATTERY] systemctl --user commands completed (returncode=0).")
+            if stdout:
+                log.info("[BATTERY-OUT] %s", stdout.strip())
+        else:
+            log.warning("[BATTERY] systemctl --user commands returned non-zero (returncode=%s).", rc)
+            if stdout:
+                log.warning("[BATTERY-OUT] %s", stdout.strip())
+            if stderr:
+                log.warning("[BATTERY-ERR] %s", stderr.strip())
+            log.warning("[BATTERY] If this fails because the user has no active session, run as the user after login:")
+            log.warning("  systemctl --user daemon-reload && systemctl --user enable --now battery-monitor.service")
+    except Exception as e:
+        log.warning(f"[BATTERY] Failed to run systemctl --user commands: {e}")
+        log.warning("[BATTERY] The service is installed but may need manual enable/start by the user.")
 
 
 # ----------------------
@@ -376,7 +425,6 @@ def set_executables_and_restart_i3():
                     f.chmod(0o755)
                 except Exception:
                     pass
-    # Attempt to restart i3 as the target user (non-fatal if it fails)
     try:
         run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False)
     except Exception as e:
@@ -387,13 +435,6 @@ def set_executables_and_restart_i3():
 # Apply GNOME Terminal profile settings (as the user)
 # ----------------------
 def apply_terminal_profile_settings():
-    """
-    Apply terminal settings using gsettings as the target user.
-    This runs a small bash snippet via sudo -u to ensure commands run in the user's session.
-    Note: gsettings may require a running X/Wayland session; if not available this will warn but continue.
-    """
-    # Build a bash snippet that gets the default profile ID and applies settings
-    # Use single-quoted bash snippet and run via sudo -u TARGET_USER bash -lc '...'
     snippet = r"""
 PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d \')
 if [ -n "$PROFILE" ]; then
@@ -433,7 +474,6 @@ def apply_grub_theme(startup_dir: Path):
     except Exception as e:
         log.warning(f"[WARN] Could not copy to {dst_usr}: {e}")
 
-    # wallpapers mapping for grub backgrounds (best-effort)
     repo_wall = startup_dir / "wallpaper"
     backgrounds_dir = Path("/usr/share/backgrounds/kali")
     ensure_dir(backgrounds_dir)
@@ -459,32 +499,23 @@ def apply_grub_theme(startup_dir: Path):
 # App installers
 # ----------------------
 def install_telegram(startup_dir: Optional[Path] = None):
-    """
-    Install Telegram desktop to /opt/Telegram and create a symlink /usr/local/bin/telegram
-    so the user can run `telegram` (lowercase) from terminal. Make symlink atomic and overwrite safely.
-    """
     log.info("[TELEGRAM] Installing Telegram (tarball) — best-effort.")
     tfile = Path("/tmp/tsetup.tar.xz")
-    # Download
     run(["wget", "-q", "https://telegram.org/dl/desktop/linux", "-O", str(tfile)], check=False)
     opt = Path("/opt/Telegram")
-    # Remove existing opt dir (backup if present)
     if opt.exists():
         backup_existing(opt)
     ensure_dir(opt)
-    # Extract into /opt/Telegram
-    r = run(["tar", "-xf", str(tfile), "-C", str(opt), "--strip-components=1"], check=False)
+    run(["tar", "-xf", str(tfile), "-C", str(opt), "--strip-components=1"], check=False)
     tbin = opt / "Telegram"
     if tbin.exists():
         try:
             tbin.chmod(0o755)
         except Exception:
             pass
-        # Create symlink so any user can run 'telegram' from PATH
         ensure_dir(Path("/usr/local/bin"))
         try:
             link = Path("/usr/local/bin/telegram")
-            # Remove existing link/file if present
             if link.exists() or link.is_symlink():
                 try:
                     link.unlink()
@@ -494,7 +525,6 @@ def install_telegram(startup_dir: Optional[Path] = None):
             log.info(f"[TELEGRAM] Created symlink {link} -> {tbin}")
         except Exception as e:
             log.warning(f"[WARN] Could not create symlink for telegram: {e}")
-        # Optionally make a user-level desktop file or other integration (left as future enhancement)
     else:
         log.warning("[WARN] Telegram binary not found after extraction.")
 
@@ -546,7 +576,6 @@ def install_rustscan():
         r = run(["dpkg", "-i", str(deb)], check=False)
         if getattr(r, "returncode", 0) != 0:
             run(["apt", "install", "-f", "-y"], check=False)
-    # Attempt to raise file descriptor limit for RustScan runtime (best-effort)
     try:
         import resource
         soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
@@ -621,6 +650,9 @@ def main():
 
     # 3) Copy configs from repo into user's home (backups made)
     copy_core_configs(startup_dir)
+
+    # 3.b) Install battery monitor script + service (if present in repo)
+    install_battery_monitor(startup_dir)
 
     # 4) Ensure scripts are executable and restart i3 (as user)
     set_executables_and_restart_i3()
