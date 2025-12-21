@@ -6,6 +6,7 @@ Type=simple
 ExecStart=%h/.local/bin/battery-monitor.sh
 Restart=always
 RestartSec=1
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
 
 [Install]
 WantedBy=default.target
