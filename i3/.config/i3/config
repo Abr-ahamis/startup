@@ -10,8 +10,7 @@ exec --no-startup-id dex --autostart --environment i3
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
 
 # remove the bar in terminal (run once on startup)
-#exec --no-startup-id PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default | tr -d "'") && gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" default-show-menubar false && gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" font 'Monospace 9' && gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" use-transparent-background true && gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" background-transparency-percent 20
-exec_always --no-startup-id "sh -c 'gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false && PROFILE=\$(gsettings get org.gnome.Terminal.ProfilesList default | tr -d \"'\") && gsettings set \"org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:\$PROFILE/\" use-system-font false && gsettings set \"org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:\$PROFILE/\" font \"Monospace 9\" && gsettings set \"org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:\$PROFILE/\" use-transparent-background true && gsettings set \"org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:\$PROFILE/\" background-transparency-percent 20'"
+exec_always --no-startup-id ~/.config/i3/scripts/terminal-font.sh
 
 # ------------------------------------------------------------
 # i3 Gaps Configuration
