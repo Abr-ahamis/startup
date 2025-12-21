@@ -260,11 +260,30 @@ def install_apt_packages(packages: List[str]):
 def copy_core_configs(startup_dir: Path):
     log.info("[COPY] Copying configs from repo...")
     repo_i3 = startup_dir / "i3"
+    # i3 config file
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config", make_backup=True)
+
+    # i3 scripts directory (NEW: copy all files under .config/i3/scripts into user's ~/.config/i3/scripts)
+    src_i3_scripts = repo_i3 / ".config" / "i3" / "scripts"
+    dst_i3_scripts = USER_HOME / ".config" / "i3" / "scripts"
+    if src_i3_scripts.exists() and src_i3_scripts.is_dir():
+        ensure_dir(dst_i3_scripts)
+        for f in sorted(src_i3_scripts.iterdir()):
+            if f.is_file():
+                safe_copy(f, dst_i3_scripts / f.name, make_backup=True)
+    else:
+        log.info(f"[COPY] No i3 scripts directory found in repo at {src_i3_scripts}; skipping.")
+
+    # i3blocks configs & scripts
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", make_backup=True, dirs_exist_ok=True)
+
+    # rofi
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", make_backup=True, dirs_exist_ok=True)
+
+    # picom config
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf", make_backup=True)
 
+    # local bin scripts from repo (repo_i3/.local/bin -> ~/.local/bin)
     src_local_bin = repo_i3 / ".local" / "bin"
     dst_local_bin = USER_HOME / ".local" / "bin"
     ensure_dir(dst_local_bin)
@@ -272,6 +291,7 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_local_bin.iterdir()):
             safe_copy(f, dst_local_bin / f.name, make_backup=True)
 
+    # fonts in repo -> ~/.local/share/fonts
     src_fonts = repo_i3 / ".local" / "share" / "fonts"
     dst_fonts = USER_HOME / ".local" / "share" / "fonts"
     ensure_dir(dst_fonts)
@@ -296,6 +316,7 @@ def copy_core_configs(startup_dir: Path):
             fh.write(f"{path_line}\n")
     os.environ["PATH"] = str(USER_HOME / ".local" / "bin") + ":" + os.environ.get("PATH", "")
 
+    # rofi system themes
     src_rofi_sys = repo_i3 / "usr" / "share" / "rofi" / "themes"
     dst_rofi_sys = Path("/usr/share/rofi/themes")
     ensure_dir(dst_rofi_sys)
@@ -303,6 +324,7 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_rofi_sys.iterdir()):
             safe_copy(f, dst_rofi_sys / f.name, make_backup=True)
 
+    # wallpapers
     repo_wall = startup_dir / "wallpaper"
     ensure_dir(USER_HOME / "Pictures")
     for name in ("wallpaper.jpg", "wallpaper-1.jpg", "wallpaper-2.jpg"):
@@ -358,6 +380,43 @@ def install_battery_monitor(startup_dir: Path):
             except Exception:
                 pass
             log.info("[BATTERY] Installed battery-monitor user service to %s", dst_service)
+
+            # --- Ensure DBUS environment line is present in the [Service] section ---
+            try:
+                env_line = "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
+                text = dst_service.read_text(encoding="utf-8")
+                if env_line not in text:
+                    lines = text.splitlines()
+                    inserted = False
+                    for i, ln in enumerate(lines):
+                        if ln.strip() == "[Service]":
+                            # find where the [Service] section ends (next section header or EOF)
+                            j = i + 1
+                            while j < len(lines) and not lines[j].strip().startswith("["):
+                                j += 1
+                            # insert the env line at the end of the [Service] block (before next section)
+                            lines.insert(j, env_line)
+                            inserted = True
+                            break
+                    if not inserted:
+                        # fallback: append at end
+                        if not lines or lines[-1].strip() != "":
+                            lines.append("")
+                        lines.append(env_line)
+                    dst_service.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    # restore ownership/perm after editing
+                    try:
+                        dst_service.chmod(0o644)
+                    except Exception:
+                        pass
+                    try:
+                        chown_recursive(dst_service, TARGET_USER)
+                    except Exception:
+                        pass
+                    log.info("[BATTERY] Injected DBUS Environment line into %s", dst_service)
+            except Exception as e:
+                log.warning(f"[BATTERY] Could not ensure DBUS env in service file: {e}")
+
     else:
         log.info("[BATTERY] No battery-monitor.service found in repo (%s). Skipping service install.", repo_service)
 
@@ -401,6 +460,7 @@ def install_battery_monitor(startup_dir: Path):
 # Make scripts executable and restart i3 (as the user)
 # ----------------------
 def set_executables_and_restart_i3():
+    # i3blocks scripts (existing behavior)
     scripts_dir = USER_HOME / ".config" / "i3blocks" / "scripts"
     if scripts_dir.exists():
         for sh in scripts_dir.glob("*.sh"):
@@ -409,6 +469,8 @@ def set_executables_and_restart_i3():
                 sh.chmod(0o755)
             except Exception:
                 pass
+
+    # rofi scripts (existing behavior)
     rofi_dir = USER_HOME / ".config" / "rofi"
     if rofi_dir.exists():
         for f in rofi_dir.rglob("*.sh"):
@@ -417,6 +479,19 @@ def set_executables_and_restart_i3():
                 f.chmod(0o755)
             except Exception:
                 pass
+
+    # new: ensure scripts in ~/.config/i3/scripts are executable
+    i3_scripts_dir = USER_HOME / ".config" / "i3" / "scripts"
+    if i3_scripts_dir.exists():
+        for f in i3_scripts_dir.iterdir():
+            if f.is_file():
+                log.info(f"[CHMOD] +x {f}")
+                try:
+                    f.chmod(0o755)
+                except Exception:
+                    pass
+
+    # local bin
     local_bin = USER_HOME / ".local" / "bin"
     if local_bin.exists():
         for f in local_bin.iterdir():
