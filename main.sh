@@ -3,7 +3,7 @@
 # Author: Neo (10 years experience) - simple style, basic commands only.
 # IMPORTANT: set REPO_URL below if you need the script to clone the repo.
 
-REPO_URL=""                 # <- PUT your git repo URL here if needed
+REPO_URL="https://github.com/Abr-ahamis/startup.git"                 # <- PUT your git repo URL here if needed
 REPO_DIR="startup"
 APT_PACKAGES="i3-wm i3blocks rofi picom feh brightnessctl pulseaudio-utils xss-lock i3lock dex fonts-font-awesome git curl wget unzip rsync timeshift grub-custmizer"
 HOME_DIR="$HOME"
