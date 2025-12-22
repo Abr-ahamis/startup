@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-startup_setup_full.py  (FULL FIX - integrated)
+startup_setup_full.py  (FINAL - includes all requested behavior)
 
-Summary of behavior:
- - Detects or clones the "startup" repo.
- - Installs core APT packages non-interactively.
- - Backs up existing configs and copies repo configs into the user's home.
- - Ensures ~/.local/bin exists and is added to PATH in .bashrc.
- - Installs battery-monitor script + user service and runs the exact:
-       XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user daemon-reexec
-       XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user daemon-reload
-       XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user restart battery-monitor.service
-   as the target non-root user (best-effort).
- - Makes scripts executable.
- - Refreshes i3 the same way as pressing Win+Shift+R using xdotool (tries multiple DISPLAY/XAUTHORITY combos),
-   falls back to i3-msg restart if needed, then waits for i3 to respond before continuing.
- - Does NOT apply any GNOME Terminal theming.
- - Does NOT prompt for GRUB theme (apply_grub_theme exists but is not called automatically).
- - Interactive install menu includes Spotify only as the added app (easy to extend).
- - Provides USER_COMMANDS area for adding arbitrary commands to run (documented inline).
-
-Run:
-  sudo python3 startup_setup_full.py
+Key behavior (per your requests):
+ - Detect/clone repo (REPO_URL)
+ - Install APT packages non-interactively
+ - Backup existing user config files and copy repo files into the user's home
+ - Ensure ~/.local/bin exists and is in user's .bashrc PATH
+ - Install battery-monitor script and user service (if present) and run the requested
+       systemctl --user daemon-reexec
+       systemctl --user daemon-reload
+       systemctl --user restart battery-monitor.service
+   executed as the target non-root user **without** XDG prefix first, then with XDG prefix if needed
+ - Install system-wide rofi theme from repo:
+       copy i3/usr/share/rofi/themes/Adapta-Nokto.rasi -> /usr/share/rofi/themes/Adapta-Nokto.rasi
+   while taking a backup of /usr/share/rofi/themes and then removing other files (after backup)
+ - Make scripts executable
+ - If the target user is running i3: refresh i3 via Win+Shift+R using xdotool (tries DISPLAY/XAUTHORITY combos),
+   fallback to i3-msg restart if necessary, then wait for i3 to respond
+ - Interactive app install menu includes Spotify (and other apps you had earlier)
+ - Logs every copy/backup/command/app-install attempt into a summary written to:
+     - /var/log/startup_setup_full.log
+     - /home/<TARGET_USER>/startup_setup_summary.txt
 """
 from __future__ import annotations
 import os
@@ -41,7 +41,6 @@ import pwd
 REPO_URL = "https://github.com/Abr-ahamis/startup.git"
 REPO_DIR_NAME = "startup"
 
-# packages to install first (apt-get)
 APT_PACKAGES = [
     "i3-wm", "i3blocks", "rofi", "xdotool", "dex", "acpi", "upower",
     "xfce4-power-manager", "i3lock", "xss-lock", "pulseaudio-utils",
@@ -49,13 +48,7 @@ APT_PACKAGES = [
     "unzip", "curl", "wget", "grub-customizer", "timeshift"
 ]
 
-# ----------------------
-# APP MENU - only add apps here (Spotify only added per your request)
-# ----------------------
-# To add more apps:
-#  1) add an entry here (e.g. 8: "myapp")
-#  2) implement install_myapp(startup_dir) below
-#  3) add mapping in INSTALL_DISPATCH
+# APP MENU: only Spotify was added per your instruction.
 APP_OPTIONS = {
     1: "telegram",
     2: "brave-nightly",
@@ -63,17 +56,23 @@ APP_OPTIONS = {
     4: "protonvpn",
     5: "virtualbox",
     6: "rustscan",
-    7: "spotify",            # <-- Spotify only, per your instruction
+    7: "spotify",
 }
 
+# Log file (root-writable)
+SYSTEM_LOG = Path("/var/log/startup_setup_full.log")
+
 # ----------------------
-# Logging
+# Logging setup
 # ----------------------
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger("startup_setup")
 
+# Global actions tracker for the final summary (keeps entries of what the script did)
+ACTIONS_LOG: List[str] = []
+
 # ----------------------
-# Utilities & environment detection
+# Environment / user detection
 # ----------------------
 def get_target_user() -> str:
     sudo_user = os.environ.get("SUDO_USER")
@@ -90,19 +89,26 @@ TARGET_USER = get_target_user()
 USER_HOME = get_user_home(TARGET_USER)
 log.info(f"Target user: {TARGET_USER}, home: {USER_HOME}")
 
+# Ensure system log file exists and is writable (script runs as root)
+try:
+    SYSTEM_LOG.parent.mkdir(parents=True, exist_ok=True)
+    if not SYSTEM_LOG.exists():
+        SYSTEM_LOG.write_text(f"startup_setup_full log created {datetime.datetime.now().isoformat()}\n")
+    ACTIONS_LOG.append(f"Log file initialized: {SYSTEM_LOG}")
+except Exception as e:
+    log.warning(f"Could not create system log {SYSTEM_LOG}: {e}")
+
 def die(msg: str, code: int = 1):
     log.error(msg)
+    ACTIONS_LOG.append(f"FATAL: {msg}")
+    write_summary_logs()
     sys.exit(code)
 
 
 def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[dict] = None, shell: bool = False):
     """
-    Wrapper around subprocess.run:
-      - cmd: list or string
-      - check: if True, raise CalledProcessError on non-zero exit
-      - capture_output: capture stdout/stderr
-      - env: additional env vars
-      - shell: if True, run via shell
+    Wrapper around subprocess.run for consistent logging.
+    Accepts list or string.
     """
     if isinstance(cmd, (list, tuple)):
         log.info(f"[CMD] {' '.join(map(str, cmd))}")
@@ -111,7 +117,6 @@ def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[di
     try:
         return subprocess.run(cmd, check=check, capture_output=capture_output, text=True, env=env, shell=shell)
     except subprocess.CalledProcessError as e:
-        log.warning(f"[CMD-FAIL] returncode={e.returncode} cmd={e.cmd}")
         if capture_output:
             log.warning("stdout: %s", e.stdout)
             log.warning("stderr: %s", e.stderr)
@@ -123,7 +128,12 @@ def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[di
 def ensure_dir(p: Path, mode: int = 0o755):
     if not p.exists():
         log.info(f"[MKDIR] {p}")
-        p.mkdir(parents=True, mode=mode, exist_ok=True)
+        try:
+            p.mkdir(parents=True, mode=mode, exist_ok=True)
+        except Exception as e:
+            log.warning(f"[MKDIR] failed {p}: {e}")
+    else:
+        log.debug(f"[MKDIR] exists {p}")
 
 
 def unique_backup_name(p: Path) -> Path:
@@ -135,15 +145,20 @@ def unique_backup_name(p: Path) -> Path:
 
 
 def backup_existing(dst: Path) -> Optional[Path]:
+    """
+    Rename dst -> dst.backup or dst.backup.TIMESTAMP if needed.
+    """
     try:
         if not dst.exists():
             return None
         b = unique_backup_name(dst)
-        log.info(f"[BACKUP] Renaming existing {dst} -> {b}")
+        log.info(f"[BACKUP] Renaming {dst} -> {b}")
         shutil.move(str(dst), str(b))
+        ACTIONS_LOG.append(f"Backed up {dst} -> {b}")
         return b
     except Exception as e:
         log.warning(f"[WARN] Failed to backup {dst}: {e}")
+        ACTIONS_LOG.append(f"Failed to backup {dst}: {e}")
         return None
 
 
@@ -162,33 +177,40 @@ def chown_recursive(path: Path, user: str):
             os.chown(str(path), uid, gid)
     except Exception as e:
         log.warning(f"[WARN] chown failed for {path}: {e}")
+        ACTIONS_LOG.append(f"chown failed for {path}: {e}")
 
 
 def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: bool = False) -> bool:
+    """
+    Copy src -> dst safely. Records action into ACTIONS_LOG.
+    """
     src = Path(src)
     dst = Path(dst)
     if not src.exists():
         log.info(f"[SKIP] Source not found: {src}")
+        ACTIONS_LOG.append(f"SKIP copy missing: {src} -> {dst}")
         return False
     ensure_dir(dst.parent)
     if dst.exists():
         if make_backup:
             backup_existing(dst)
         else:
-            if dst.is_dir():
-                shutil.rmtree(dst, ignore_errors=True)
-            else:
-                try:
+            try:
+                if dst.is_dir():
+                    shutil.rmtree(dst, ignore_errors=True)
+                else:
                     dst.unlink()
-                except Exception:
-                    pass
+            except Exception:
+                pass
     try:
         if src.is_dir():
             log.info(f"[COPY-DIR] {src} -> {dst}")
             shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
+            ACTIONS_LOG.append(f"COPY-DIR {src} -> {dst}")
         else:
             log.info(f"[COPY-FILE] {src} -> {dst}")
             shutil.copy2(src, dst)
+            ACTIONS_LOG.append(f"COPY-FILE {src} -> {dst}")
         try:
             chown_recursive(dst, TARGET_USER)
         except Exception:
@@ -196,6 +218,7 @@ def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: boo
         return True
     except Exception as e:
         log.warning(f"[WARN] Copy failed {src} -> {dst}: {e}")
+        ACTIONS_LOG.append(f"COPY-FAILED {src} -> {dst}: {e}")
         return False
 
 
@@ -215,18 +238,24 @@ def detect_or_clone_repo() -> Path:
     log.info(f"Working directory: {cwd}")
     if (cwd / "i3").is_dir() and (cwd / "grub").is_dir() and (cwd / "wallpaper").is_dir():
         log.info("[INFO] Found startup files in current directory; using current dir as startup repo.")
+        ACTIONS_LOG.append(f"Using current dir as repo: {cwd}")
         return cwd
     if (cwd / REPO_DIR_NAME).is_dir():
         log.info(f"[INFO] Found ./{REPO_DIR_NAME}; using it.")
+        ACTIONS_LOG.append(f"Found ./{REPO_DIR_NAME}")
         return cwd / REPO_DIR_NAME
     target = cwd / REPO_DIR_NAME
     if target.exists():
-        log.info(f"[INFO] {target} exists; using it.")
+        ACTIONS_LOG.append(f"Using existing {target}")
         return target
     log.info(f"[INFO] Cloning {REPO_URL} -> {target}")
     r = run(["git", "clone", REPO_URL, str(target)], check=False, capture_output=True)
-    if getattr(r, "returncode", 1) != 0:
+    rc = getattr(r, "returncode", 1)
+    if rc != 0:
         log.warning("[WARN] git clone returned non-zero; continuing in case repo exists locally.")
+        ACTIONS_LOG.append(f"git clone rc={rc}")
+    else:
+        ACTIONS_LOG.append(f"git clone {REPO_URL} -> {target}")
     return target
 
 
@@ -244,6 +273,7 @@ def install_apt_packages(packages: List[str]):
     cmd = ["apt", "install", "-y"] + packages
     log.info(f"[APT] Installing packages: {len(packages)} items")
     run(cmd, check=False, env=env)
+    ACTIONS_LOG.append(f"apt install attempted: {len(packages)} packages")
 
 
 # ----------------------
@@ -252,6 +282,7 @@ def install_apt_packages(packages: List[str]):
 def copy_core_configs(startup_dir: Path):
     log.info("[COPY] Copying configs from repo...")
     repo_i3 = startup_dir / "i3"
+
     # i3 config file
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config", make_backup=True)
 
@@ -266,7 +297,7 @@ def copy_core_configs(startup_dir: Path):
     else:
         log.info(f"[COPY] No i3 scripts directory found in repo at {src_i3_scripts}; skipping.")
 
-    # other configs
+    # i3blocks, rofi, picom
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", make_backup=True, dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", make_backup=True, dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf", make_backup=True)
@@ -290,18 +321,25 @@ def copy_core_configs(startup_dir: Path):
     # Ensure ~/.local/bin is present and add to .bashrc if missing
     bashrc = USER_HOME / ".bashrc"
     path_line = 'export PATH="$HOME/.local/bin:$PATH"'
-    if bashrc.exists():
-        content = bashrc.read_text()
-        if path_line not in content:
-            log.info("[PATH] Appending PATH line to .bashrc")
-            with open(bashrc, "a") as fh:
-                fh.write(f"\n{path_line}\n")
+    try:
+        if bashrc.exists():
+            content = bashrc.read_text()
+            if path_line not in content:
+                log.info("[PATH] Appending PATH line to .bashrc")
+                with open(bashrc, "a") as fh:
+                    fh.write(f"\n{path_line}\n")
+                ACTIONS_LOG.append("Appended PATH to .bashrc")
+            else:
+                log.info("[PATH] PATH already present in .bashrc")
         else:
-            log.info("[PATH] PATH already present in .bashrc")
-    else:
-        log.info("[PATH] .bashrc not found, creating one with PATH line.")
-        with open(bashrc, "w") as fh:
-            fh.write(f"{path_line}\n")
+            log.info("[PATH] .bashrc not found, creating one with PATH line.")
+            with open(bashrc, "w") as fh:
+                fh.write(f"{path_line}\n")
+            ACTIONS_LOG.append("Created .bashrc with PATH")
+    except Exception as e:
+        log.warning("[PATH] Could not update .bashrc: %s", e)
+        ACTIONS_LOG.append(f".bashrc update failed: {e}")
+
     os.environ["PATH"] = str(USER_HOME / ".local" / "bin") + ":" + os.environ.get("PATH", "")
 
     # wallpapers
@@ -315,26 +353,91 @@ def copy_core_configs(startup_dir: Path):
             ensure_dir(backgrounds_dir)
             try:
                 shutil.copy2(s, backgrounds_dir / name)
+                ACTIONS_LOG.append(f"Copied wallpaper to {backgrounds_dir}/{name}")
             except Exception as e:
                 log.warning(f"[WARN] copying wallpaper to system backgrounds failed: {e}")
+                ACTIONS_LOG.append(f"Failed copying wallpaper to system: {e}")
 
 
 # ----------------------
-# Install battery monitor (script + systemd --user service)
+# Helper: run systemctl --user sequence (first attempt without XDG, then fallback with XDG)
+# ----------------------
+def run_systemctl_user_sequence():
+    """
+    Attempt to run, as the target user, the exact three commands **without** XDG_RUNTIME_DIR prefix first.
+    If they fail (return non-zero or indicate cannot connect to bus), retry with XDG_RUNTIME_DIR=/run/user/<UID>.
+    Logs results to ACTIONS_LOG.
+    """
+    try:
+        pw = pwd.getpwnam(TARGET_USER)
+        uid = pw.pw_uid
+    except Exception as e:
+        log.warning("[SYSTEMCTL] Could not find user %s: %s", TARGET_USER, e)
+        ACTIONS_LOG.append(f"systemctl sequence skipped - user lookup failed: {e}")
+        return
+
+    cmds_noprefix = [
+        ["sudo", "-u", TARGET_USER, "systemctl", "--user", "daemon-reexec"],
+        ["sudo", "-u", TARGET_USER, "systemctl", "--user", "daemon-reload"],
+        ["sudo", "-u", TARGET_USER, "systemctl", "--user", "restart", "battery-monitor.service"],
+    ]
+    cmds_with_xdg = [
+        ["sudo", "-u", TARGET_USER, "bash", "-lc", f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reexec"],
+        ["sudo", "-u", TARGET_USER, "bash", "-lc", f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload"],
+        ["sudo", "-u", TARGET_USER, "bash", "-lc", f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user restart battery-monitor.service"],
+    ]
+
+    success_all = True
+    # Try no-prefix first
+    for c in cmds_noprefix:
+        r = run(c, check=False, capture_output=True)
+        rc = getattr(r, "returncode", 1)
+        stdout = (getattr(r, "stdout", "") or "").strip()
+        stderr = (getattr(r, "stderr", "") or "").strip()
+        ACTIONS_LOG.append(f"Ran (no XDG): {' '.join(c)} rc={rc}")
+        if rc == 0:
+            log.info("[SYSTEMCTL] succeeded: %s", " ".join(c))
+            if stdout:
+                log.info("[SYSTEMCTL-OUT] %s", stdout)
+        else:
+            log.warning("[SYSTEMCTL] failed (no XDG) rc=%s: %s", rc, " ".join(c))
+            if stderr:
+                log.warning("[SYSTEMCTL-ERR] %s", stderr)
+            success_all = False
+
+    if success_all:
+        ACTIONS_LOG.append("systemctl sequence completed successfully (no XDG)")
+        return
+
+    # If no-prefix failed, attempt prefixed variant for reliability
+    log.info("[SYSTEMCTL] Falling back to XDG_RUNTIME_DIR-prefixed commands for reliability.")
+    for c in cmds_with_xdg:
+        r = run(c, check=False, capture_output=True, shell=False)
+        rc = getattr(r, "returncode", 1)
+        stdout = (getattr(r, "stdout", "") or "").strip()
+        stderr = (getattr(r, "stderr", "") or "").strip()
+        ACTIONS_LOG.append(f"Ran (with XDG): {c} rc={rc}")
+        if rc == 0:
+            log.info("[SYSTEMCTL] succeeded (with XDG): %s", c)
+            if stdout:
+                log.info("[SYSTEMCTL-OUT] %s", stdout)
+        else:
+            log.warning("[SYSTEMCTL] failed (with XDG) rc=%s: %s", rc, c)
+            if stderr:
+                log.warning("[SYSTEMCTL-ERR] %s", stderr)
+    ACTIONS_LOG.append("systemctl sequence attempted (with fallback)")
+
+
+# ----------------------
+# Install battery monitor script + service and run user systemctl sequence
 # ----------------------
 def install_battery_monitor(startup_dir: Path):
-    """
-    Install battery-monitor script and user systemd service from the repo into the
-    target user's home and attempt to enable & start the service using systemctl --user
-    sequence as the target user with XDG_RUNTIME_DIR set.
-    """
     repo_script = startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh"
     repo_service = startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service"
 
     dst_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
     dst_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
 
-    # Copy script
     if repo_script.exists():
         ensure_dir(dst_script.parent)
         if safe_copy(repo_script, dst_script, make_backup=True):
@@ -346,11 +449,12 @@ def install_battery_monitor(startup_dir: Path):
                 chown_recursive(dst_script, TARGET_USER)
             except Exception:
                 pass
+            ACTIONS_LOG.append(f"Installed battery-monitor script -> {dst_script}")
             log.info("[BATTERY] Installed battery-monitor script to %s", dst_script)
     else:
-        log.info("[BATTERY] No battery-monitor script found in repo (%s). Skipping script install.", repo_script)
+        log.info("[BATTERY] No battery-monitor script found in repo; skipping script install.")
+        ACTIONS_LOG.append("No battery-monitor script in repo")
 
-    # Copy user service
     if repo_service.exists():
         ensure_dir(dst_service.parent)
         if safe_copy(repo_service, dst_service, make_backup=True):
@@ -358,9 +462,10 @@ def install_battery_monitor(startup_dir: Path):
                 chown_recursive(dst_service, TARGET_USER)
             except Exception:
                 pass
+            ACTIONS_LOG.append(f"Installed battery-monitor service -> {dst_service}")
             log.info("[BATTERY] Installed battery-monitor user service to %s", dst_service)
 
-            # Ensure DBUS environment line is present in the [Service] section
+            # ensure DBUS environment line present in [Service]
             try:
                 env_line = "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
                 text = dst_service.read_text(encoding="utf-8")
@@ -384,105 +489,146 @@ def install_battery_monitor(startup_dir: Path):
                         dst_service.chmod(0o644)
                     except Exception:
                         pass
-                    try:
-                        chown_recursive(dst_service, TARGET_USER)
-                    except Exception:
-                        pass
+                    chown_recursive(dst_service, TARGET_USER)
+                    ACTIONS_LOG.append("Injected DBUS env into battery-monitor.service")
                     log.info("[BATTERY] Injected DBUS Environment line into %s", dst_service)
             except Exception as e:
                 log.warning(f"[BATTERY] Could not ensure DBUS env in service file: {e}")
+                ACTIONS_LOG.append(f"Failed to inject DBUS env: {e}")
     else:
-        log.info("[BATTERY] No battery-monitor.service found in repo (%s). Skipping service install.", repo_service)
+        log.info("[BATTERY] No battery-monitor.service found in repo; skipping service install.")
+        ACTIONS_LOG.append("No battery-monitor.service in repo")
 
-    # Now attempt to run the exact command sequence as the target user:
-    try:
-        pw = pwd.getpwnam(TARGET_USER)
-        uid = pw.pw_uid
-        runtime_dir = Path(f"/run/user/{uid}")
-        if not runtime_dir.exists():
-            log.warning("[BATTERY] /run/user/%d does not exist. The target user may not have an active login session; systemctl --user may fail.", uid)
-        cmds = [
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reexec",
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload",
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user restart battery-monitor.service",
-        ]
-        log.info("[BATTERY] Running systemctl --user commands as user %s", TARGET_USER)
-        for cmd in cmds:
-            r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd], check=False, capture_output=True)
-            rc = getattr(r, "returncode", 1)
-            stdout = getattr(r, "stdout", "") or ""
-            stderr = getattr(r, "stderr", "") or ""
-            if rc == 0:
-                log.info("[BATTERY] Command succeeded: %s", cmd)
-                if stdout:
-                    log.info("[BATTERY-OUT] %s", stdout.strip())
-            else:
-                log.warning("[BATTERY] Command returned non-zero (rc=%s): %s", rc, cmd)
-                if stdout:
-                    log.warning("[BATTERY-OUT] %s", stdout.strip())
-                if stderr:
-                    log.warning("[BATTERY-ERR] %s", stderr.strip())
-        log.info("[BATTERY] systemctl --user sequence attempted.")
-    except Exception as e:
-        log.warning(f"[BATTERY] Failed to run systemctl --user commands: {e}")
-        log.warning("[BATTERY] The service is installed but may need manual enable/start by the user.")
+    # Run user-level systemctl commands (attempt no-prefix then fallback with XDG)
+    run_systemctl_user_sequence()
 
 
 # ----------------------
-# i3 detection & refresh helpers
+# Install system-wide rofi theme from repo (backup, copy, remove others)
+# ----------------------
+def install_system_rofi_theme_from_repo(startup_dir: Path):
+    """
+    - Back up /usr/share/rofi/themes -> /usr/share/rofi/themes.backup.TIMESTAMP
+    - Copy repo/i3/usr/share/rofi/themes/Adapta-Nokto.rasi -> /usr/share/rofi/themes/Adapta-Nokto.rasi
+    - Remove other files in /usr/share/rofi/themes (after backup)
+    - Re-run systemctl --user sequence for the target user (no-prefix then fallback)
+    """
+    repo_theme = startup_dir / "i3" / "usr" / "share" / "rofi" / "themes" / "Adapta-Nokto.rasi"
+    dst_dir = Path("/usr/share/rofi/themes")
+    if not repo_theme.exists():
+        log.info("[ROFI-THEME] Repo theme not found at %s; skipping.", repo_theme)
+        ACTIONS_LOG.append(f"ROFI theme not found in repo: {repo_theme}")
+        return
+
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_dir = dst_dir.parent / f"themes.backup.{ts}"
+    try:
+        # Backup existing themes directory
+        if dst_dir.exists():
+            log.info("[ROFI-THEME] Backing up %s -> %s", dst_dir, backup_dir)
+            if backup_dir.exists():
+                shutil.rmtree(backup_dir, ignore_errors=True)
+            shutil.copytree(dst_dir, backup_dir)
+            ACTIONS_LOG.append(f"Backed up /usr/share/rofi/themes -> {backup_dir}")
+        else:
+            ensure_dir(dst_dir)
+            ACTIONS_LOG.append(f"Created /usr/share/rofi/themes directory")
+
+        # Copy the new theme file into place (overwrite if exists)
+        dest_theme = dst_dir / "Adapta-Nokto.rasi"
+        log.info("[ROFI-THEME] Installing %s -> %s", repo_theme, dest_theme)
+        shutil.copy2(repo_theme, dest_theme)
+        ACTIONS_LOG.append(f"Installed rofi theme {repo_theme} -> {dest_theme}")
+
+        # Remove other files in the themes directory (only after backup)
+        for p in dst_dir.iterdir():
+            if p.is_file() and p.name != dest_theme.name:
+                try:
+                    log.info("[ROFI-THEME] Removing other theme file: %s", p)
+                    ACTIONS_LOG.append(f"Removing theme file: {p}")
+                    p.unlink()
+                except Exception as e:
+                    log.warning("[ROFI-THEME] Could not remove %s: %s", p, e)
+                    ACTIONS_LOG.append(f"Failed remove theme file {p}: {e}")
+
+        # Fix permissions: files readable by all
+        try:
+            for p in dst_dir.iterdir():
+                if p.is_file():
+                    p.chmod(0o644)
+        except Exception:
+            pass
+
+        ACTIONS_LOG.append(f"ROFI theme installed and other themes removed; backup at {backup_dir}")
+        log.info("[ROFI-THEME] System rofi theme installed. Backup stored at %s", backup_dir)
+    except Exception as e:
+        log.warning("[ROFI-THEME] Failed to install system rofi theme: %s", e)
+        ACTIONS_LOG.append(f"ROFI theme install failed: {e}")
+        # Try to restore backup if we broke something
+        try:
+            if backup_dir.exists() and dst_dir.exists():
+                shutil.rmtree(dst_dir, ignore_errors=True)
+                shutil.copytree(backup_dir, dst_dir)
+                ACTIONS_LOG.append(f"Restored theme backup from {backup_dir}")
+        except Exception as e2:
+            log.warning("[ROFI-THEME] Could not restore backup: %s", e2)
+            ACTIONS_LOG.append(f"Failed to restore theme backup: {e2}")
+
+    # Re-run user systemctl sequence because we changed system files
+    run_systemctl_user_sequence()
+
+
+# ----------------------
+# i3 detection and refresh helpers
 # ----------------------
 def is_user_running_i3() -> bool:
     """
-    Return True if the target user appears to be running i3.
-    Strategy:
-      1) Try `pgrep -u <uid> -x i3` (fast, reliable)
-      2) Fallback: run `i3-msg -t get_version` as the user with XDG_RUNTIME_DIR set.
-    If both checks fail, return False.
+    Detect if the target user is running i3:
+      1) pgrep -u <uid> -x i3
+      2) fallback: i3-msg -t get_version as the user
     """
     try:
         pw = pwd.getpwnam(TARGET_USER)
         uid = pw.pw_uid
     except Exception:
-        log.warning("[I3-CHECK] Could not look up user %s", TARGET_USER)
+        log.warning("[I3-CHECK] Could not lookup user %s", TARGET_USER)
         return False
 
-    # 1) pgrep check
     try:
         r = run(["pgrep", "-u", str(uid), "-x", "i3"], check=False, capture_output=True)
         if getattr(r, "returncode", 1) == 0:
+            ACTIONS_LOG.append(f"Detected i3 via pgrep for {TARGET_USER}")
             log.info("[I3-CHECK] Found i3 process for user %s (pgrep).", TARGET_USER)
             return True
     except Exception:
         pass
 
-    # 2) Fallback: try i3-msg get_version as the user with XDG_RUNTIME_DIR set
+    # fallback to i3-msg
     try:
-        cmd = f'XDG_RUNTIME_DIR=/run/user/{uid} i3-msg -t get_version'
-        r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd], check=False, capture_output=True)
+        r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", f"i3-msg -t get_version"], check=False, capture_output=True)
         rc = getattr(r, "returncode", 1)
         out = (getattr(r, "stdout", "") or "").strip()
         if rc == 0 and out:
+            ACTIONS_LOG.append(f"Detected i3 via i3-msg for {TARGET_USER}")
             log.info("[I3-CHECK] i3 responded to i3-msg for user %s.", TARGET_USER)
             return True
     except Exception:
         pass
 
-    log.info("[I3-CHECK] No i3 session detected for user %s; skipping i3 refresh.", TARGET_USER)
+    log.info("[I3-CHECK] No i3 session detected for user %s; skipping refresh.", TARGET_USER)
     return False
 
 
 def try_send_xdotool_refresh(timeout: int = 5) -> bool:
     """
-    Attempt to simulate Win+Shift+R in the user's X session using xdotool.
-    Returns True if xdotool command ran successfully.
-    Tries common DISPLAY values and the user's XAUTHORITY file.
+    Simulate Win+Shift+R (Super+Shift+r) via xdotool for the user's X session.
+    Tries several DISPLAY / XAUTHORITY combinations.
     """
     displays = [":0", ":0.0", ":1"]
     xauth_candidates = [
         str(USER_HOME / ".Xauthority"),
         f"/run/user/{pwd.getpwnam(TARGET_USER).pw_uid}/gdm/Xauthority" if Path(f"/run/user/{pwd.getpwnam(TARGET_USER).pw_uid}/gdm").exists() else "",
     ]
-    # xdotool combo: Super (Win) + Shift + r
     key_cmd = "xdotool keydown Super keydown Shift key r keyup Shift keyup Super"
 
     for disp in displays:
@@ -490,40 +636,33 @@ def try_send_xdotool_refresh(timeout: int = 5) -> bool:
             wrapper = f'export DISPLAY="{disp}" && export XAUTHORITY="{xauth}" && {key_cmd}'
             cmd = ["sudo", "-u", TARGET_USER, "bash", "-lc", wrapper]
             log.info("[I3-REFRESH] Trying xdotool on DISPLAY=%s XAUTHORITY=%s", disp, xauth)
-            r = run(cmd, check=False, capture_output=True)
-            rc = getattr(r, "returncode", 1)
-            stdout = getattr(r, "stdout", "") or ""
-            stderr = getattr(r, "stderr", "") or ""
+            A = run(cmd, check=False, capture_output=True)
+            rc = getattr(A, "returncode", 1)
             if rc == 0:
-                log.info("[I3-REFRESH] xdotool reported success on %s (stdout: %s)", disp, stdout.strip())
+                ACTIONS_LOG.append(f"xdotool refresh succeeded on DISPLAY={disp} XAUTHORITY={xauth}")
+                log.info("[I3-REFRESH] xdotool success on %s", disp)
                 return True
             else:
-                log.debug("[I3-REFRESH] xdotool failed on %s (rc=%s). stdout=%s stderr=%s", disp, rc, stdout.strip(), stderr.strip())
+                log.debug("[I3-REFRESH] xdotool failed on %s rc=%s", disp, rc)
 
-    # try without explicit XAUTHORITY (some setups use DISPLAY only)
+    # try without XAUTHORITY
     for disp in displays:
         wrapper = f'export DISPLAY="{disp}" && {key_cmd}'
         cmd = ["sudo", "-u", TARGET_USER, "bash", "-lc", wrapper]
         log.info("[I3-REFRESH] Trying xdotool on DISPLAY=%s (no XAUTHORITY)", disp)
-        r = run(cmd, check=False, capture_output=True)
-        rc = getattr(r, "returncode", 1)
-        stdout = getattr(r, "stdout", "") or ""
-        stderr = getattr(r, "stderr", "") or ""
+        A = run(cmd, check=False, capture_output=True)
+        rc = getattr(A, "returncode", 1)
         if rc == 0:
-            log.info("[I3-REFRESH] xdotool reported success on %s (stdout: %s)", disp, stdout.strip())
+            ACTIONS_LOG.append(f"xdotool refresh succeeded on DISPLAY={disp} (no XAUTHORITY)")
+            log.info("[I3-REFRESH] xdotool success on %s (no XAUTHORITY)", disp)
             return True
-        else:
-            log.debug("[I3-REFRESH] xdotool failed on %s (rc=%s). stdout=%s stderr=%s", disp, rc, stdout.strip(), stderr.strip())
 
-    log.warning("[I3-REFRESH] xdotool refresh attempts failed (xdotool may be missing or no X session found).")
+    log.warning("[I3-REFRESH] xdotool attempts failed (xdotool may be missing or no X session).")
+    ACTIONS_LOG.append("xdotool refresh attempts failed")
     return False
 
 
 def wait_for_i3_ready(timeout: int = 20) -> bool:
-    """
-    Poll i3 (as target user) until it responds to `i3-msg -t get_version`.
-    Returns True if i3 responded within timeout seconds, False otherwise.
-    """
     log.info("[I3-WAIT] Waiting for i3 to be ready (timeout %ds)...", timeout)
     start = time.time()
     while time.time() - start < timeout:
@@ -532,40 +671,38 @@ def wait_for_i3_ready(timeout: int = 20) -> bool:
             rc = getattr(r, "returncode", 1)
             out = (getattr(r, "stdout", "") or "").strip()
             if rc == 0 and out:
-                log.info("[I3-WAIT] i3 responded: %s", out.splitlines()[0] if out else "<empty>")
+                ACTIONS_LOG.append("i3 responded after refresh")
+                log.info("[I3-WAIT] i3 responded.")
                 return True
         except Exception:
             pass
         time.sleep(1)
     log.warning("[I3-WAIT] i3 did not respond within %d seconds.", timeout)
+    ACTIONS_LOG.append("i3 did not respond within timeout")
     return False
 
 
-# ----------------------
-# Make scripts executable and refresh i3 (Win+Shift+R or fallback)
-# ----------------------
 def set_executables_and_restart_i3():
     """
-    Make user scripts executable, then attempt to refresh i3 via xdotool (Win+Shift+R)
-    only if the target user is actually running i3. Otherwise skip refresh cleanly.
-    Falls back to i3-msg restart if xdotool fails.
+    Make scripts executable; if the user is running i3, attempt a keyboard refresh (xdotool) to simulate Win+Shift+R.
+    Fallback to i3-msg restart if needed. If the user isn't running i3, skip refresh.
     """
-    # Ensure scripts are executable (i3blocks, rofi, i3 scripts, local bin)
+    # make scripts executable
     scripts_dir = USER_HOME / ".config" / "i3blocks" / "scripts"
     if scripts_dir.exists():
         for sh in scripts_dir.glob("*.sh"):
-            log.info(f"[CHMOD] +x {sh}")
             try:
                 sh.chmod(0o755)
+                ACTIONS_LOG.append(f"chmod +x {sh}")
             except Exception:
                 pass
 
     rofi_dir = USER_HOME / ".config" / "rofi"
     if rofi_dir.exists():
         for f in rofi_dir.rglob("*.sh"):
-            log.info(f"[CHMOD] +x {f}")
             try:
                 f.chmod(0o755)
+                ACTIONS_LOG.append(f"chmod +x {f}")
             except Exception:
                 pass
 
@@ -573,9 +710,9 @@ def set_executables_and_restart_i3():
     if i3_scripts_dir.exists():
         for f in i3_scripts_dir.iterdir():
             if f.is_file():
-                log.info(f"[CHMOD] +x {f}")
                 try:
                     f.chmod(0o755)
+                    ACTIONS_LOG.append(f"chmod +x {f}")
                 except Exception:
                     pass
 
@@ -588,64 +725,44 @@ def set_executables_and_restart_i3():
                 except Exception:
                     pass
 
-    # Only attempt refresh if i3 is running for the user
+    # Only attempt refresh if user is running i3
     if not is_user_running_i3():
-        log.info("[I3-REFRESH] Target user does not appear to be running i3; skipping refresh step.")
+        ACTIONS_LOG.append("Skipped i3 refresh: user not running i3")
         return
 
-    # 1) Try to refresh via keyboard (xdotool)
+    # Try xdotool refresh
     refreshed = False
     try:
         r = run(["which", "xdotool"], check=False, capture_output=True)
         if getattr(r, "returncode", 1) == 0 and (getattr(r, "stdout", "") or "").strip():
             refreshed = try_send_xdotool_refresh()
         else:
-            log.info("[I3-REFRESH] xdotool not found on system; skipping keypress method.")
+            log.info("[I3-REFRESH] xdotool not installed; skipping keypress method.")
+            ACTIONS_LOG.append("xdotool not installed")
     except Exception as e:
         log.warning("[I3-REFRESH] Exception checking xdotool: %s", e)
+        ACTIONS_LOG.append(f"xdotool check exception: {e}")
 
-    # 2) Fallback: try i3-msg restart as the user (may fail if socket unavailable)
+    # Fallback to i3-msg restart if xdotool failed
     if not refreshed:
         try:
             log.info("[I3-REFRESH] Falling back to i3-msg restart (best-effort).")
             run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False, capture_output=True)
+            ACTIONS_LOG.append("Ran i3-msg restart (fallback)")
         except Exception as e:
             log.warning(f"[WARN] Could not run i3-msg restart: {e}")
+            ACTIONS_LOG.append(f"i3-msg restart failed: {e}")
 
-    # 3) Wait for i3 to be ready
-    i3_ready = wait_for_i3_ready(timeout=20)
-    if not i3_ready:
-        log.warning("[I3-REFRESH] i3 did not respond after refresh attempts; continuing anyway.")
+    # Wait for i3
+    ok = wait_for_i3_ready(timeout=20)
+    if ok:
+        ACTIONS_LOG.append("i3 ready after refresh")
     else:
-        log.info("[I3-REFRESH] i3 reported ready after refresh.")
+        ACTIONS_LOG.append("i3 not ready after refresh - continuing anyway")
 
 
 # ----------------------
-# GRUB theme apply (kept but not called automatically)
-# ----------------------
-def apply_grub_theme(startup_dir: Path):
-    log.info("[GRUB] Applying grub theme (best-effort).")
-    repo_grub = startup_dir / "grub"
-    dst_boot_grub = Path("/boot/grub/themes/kali")
-    if dst_boot_grub.exists():
-        shutil.rmtree(dst_boot_grub, ignore_errors=True)
-    try:
-        shutil.copytree(repo_grub, dst_boot_grub)
-        log.info(f"[GRUB] Copied {repo_grub} -> {dst_boot_grub}")
-    except Exception as e:
-        log.warning(f"[WARN] Could not copy grub theme: {e}")
-    dst_usr = Path("/usr/share/grub/themes")
-    ensure_dir(dst_usr)
-    try:
-        if (dst_usr / "kali").exists():
-            shutil.rmtree(dst_usr / "kali", ignore_errors=True)
-        shutil.copytree(dst_boot_grub, dst_usr / "kali", dirs_exist_ok=True)
-    except Exception as e:
-        log.warning(f"[WARN] Could not copy to {dst_usr}: {e}")
-
-
-# ----------------------
-# App installers (implementations)
+# App installers (unchanged core logic; best-effort)
 # ----------------------
 def install_telegram(startup_dir: Optional[Path] = None):
     log.info("[TELEGRAM] Installing Telegram (tarball) — best-effort.")
@@ -671,17 +788,21 @@ def install_telegram(startup_dir: Optional[Path] = None):
                 except Exception:
                     pass
             link.symlink_to(tbin)
+            ACTIONS_LOG.append("Telegram installed and symlinked /usr/local/bin/telegram")
             log.info(f"[TELEGRAM] Created symlink {link} -> {tbin}")
         except Exception as e:
             log.warning(f"[WARN] Could not create symlink for telegram: {e}")
+            ACTIONS_LOG.append(f"Telegram symlink failed: {e}")
     else:
         log.warning("[WARN] Telegram binary not found after extraction.")
+        ACTIONS_LOG.append("Telegram extraction failed")
 
 
 def install_brave_nightly(startup_dir: Optional[Path] = None):
     log.info("[BRAVE] Installing Brave (nightly) — best-effort.")
     run('curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly bash', check=False, shell=True)
     run(["apt", "install", "-y", "brave-browser-nightly"], check=False)
+    ACTIONS_LOG.append("Brave nightly install attempted")
 
 
 def install_vscode(startup_dir: Optional[Path] = None):
@@ -696,6 +817,7 @@ def install_vscode(startup_dir: Optional[Path] = None):
             deb.unlink()
         except Exception:
             pass
+    ACTIONS_LOG.append("VSCode install attempted")
 
 
 def install_protonvpn(startup_dir: Optional[Path] = None):
@@ -708,12 +830,14 @@ def install_protonvpn(startup_dir: Optional[Path] = None):
         run(["apt", "update"], check=False)
         run(["apt", "install", "-f", "-y"], check=False)
         run(["apt", "install", "-y", "proton-vpn-gnome-desktop"], check=False)
+    ACTIONS_LOG.append("ProtonVPN install attempted")
 
 
 def install_virtualbox(startup_dir: Optional[Path] = None):
     log.info("[VBOX] Installing VirtualBox (from apt) — best-effort.")
     run(["apt", "update"], check=False)
     run(["apt", "install", "-y", "virtualbox"], check=False)
+    ACTIONS_LOG.append("VirtualBox install attempted")
 
 
 def install_rustscan(startup_dir: Optional[Path] = None):
@@ -725,14 +849,10 @@ def install_rustscan(startup_dir: Optional[Path] = None):
         r = run(["dpkg", "-i", str(deb)], check=False)
         if getattr(r, "returncode", 0) != 0:
             run(["apt", "install", "-f", "-y"], check=False)
+    ACTIONS_LOG.append("RustScan install attempted")
 
 
 def install_spotify(startup_dir: Optional[Path] = None):
-    """
-    Best-effort Spotify installer:
-      - Try apt repo + keyring method
-      - Fallback to snap if apt fails or snap is preferred
-    """
     log.info("[SPOTIFY] Installing Spotify (best-effort).")
     try:
         run(["apt", "update"], check=False)
@@ -741,22 +861,22 @@ def install_spotify(startup_dir: Optional[Path] = None):
         list_content = "deb [signed-by=/usr/share/keyrings/spotify-archive-keyring.gpg] http://repository.spotify.com stable non-free\n"
         try:
             list_file.write_text(list_content)
-            log.info("[SPOTIFY] wrote %s", list_file)
         except Exception as e:
-            log.warning("[SPOTIFY] Could not write sources list directly: %s", e)
+            log.warning("[SPOTIFY] Could not write sources.list: %s", e)
         run(["apt", "update"], check=False)
         run(["apt", "install", "-y", "spotify-client"], check=False)
-        log.info("[SPOTIFY] apt install attempted.")
+        ACTIONS_LOG.append("Spotify apt install attempted")
     except Exception as e:
         log.warning("[SPOTIFY] apt-based install failed: %s", e)
-    # fallback to snap
+        ACTIONS_LOG.append(f"Spotify apt failed: {e}")
+    # fallback snap
     try:
         run(["snap", "install", "spotify"], check=False)
+        ACTIONS_LOG.append("Spotify snap install attempted")
     except Exception:
-        log.info("[SPOTIFY] snap fallback not available or failed; install may require manual steps.")
+        pass
 
 
-# dispatch mapping name -> callable
 INSTALL_DISPATCH: Dict[str, Callable[[Optional[Path]], None]] = {
     "telegram": install_telegram,
     "brave-nightly": install_brave_nightly,
@@ -768,20 +888,19 @@ INSTALL_DISPATCH: Dict[str, Callable[[Optional[Path]], None]] = {
 }
 
 # ----------------------
-# USER COMMANDS (easy place to add extra commands)
+# USER_COMMANDS (edit to add custom commands)
 # ----------------------
-# To add commands to run during setup, add dictionaries to USER_COMMANDS:
-#  {"as_user": TARGET_USER, "cmd": "echo hello > ~/hello.txt"}
-USER_COMMANDS: List[Dict[str, Any]] = [
-    # Example (commented):
-    # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user daemon-reexec'},
-    # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user daemon-reload'},
-    # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user restart battery-monitor.service'},
-]
+# Add arbitrary commands to run during setup. Example:
+# USER_COMMANDS = [
+#   {"as_user": TARGET_USER, "cmd": "echo hello > ~/hello.txt"},
+#   {"as_user": "root", "cmd": "echo rootcmd >/tmp/rootcmd.txt"}
+# ]
+USER_COMMANDS: List[Dict[str, Any]] = []
+
 
 def run_user_commands():
     if not USER_COMMANDS:
-        log.info("[USER-CMDS] No user commands defined.")
+        ACTIONS_LOG.append("No USER_COMMANDS defined")
         return
     for entry in USER_COMMANDS:
         as_user = entry.get("as_user", "root")
@@ -797,24 +916,15 @@ def run_user_commands():
                 wrapper = f"XDG_RUNTIME_DIR=/run/user/{uid} {cmd}"
                 r = run(["sudo", "-u", as_user, "bash", "-lc", wrapper], check=False, capture_output=True)
             rc = getattr(r, "returncode", 1)
-            stdout = getattr(r, "stdout", "") or ""
-            stderr = getattr(r, "stderr", "") or ""
-            if rc == 0:
-                log.info("[USER-CMDS] succeeded: %s", cmd)
-                if stdout:
-                    log.info("[USER-CMDS-OUT] %s", stdout.strip())
-            else:
-                log.warning("[USER-CMDS] rc=%s for cmd: %s", rc, cmd)
-                if stdout:
-                    log.warning("[USER-CMDS-OUT] %s", stdout.strip())
-                if stderr:
-                    log.warning("[USER-CMDS-ERR] %s", stderr.strip())
+            ACTIONS_LOG.append(f"Ran USER_COMMAND as {as_user}: {cmd} rc={rc}")
+            if rc != 0:
+                ACTIONS_LOG.append(f"USER_COMMAND stderr: {getattr(r,'stderr','')}")
         except Exception as e:
-            log.warning("[USER-CMDS] Exception running command %s: %s", cmd, e)
+            ACTIONS_LOG.append(f"USER_COMMAND exception: {e}")
 
 
 # ----------------------
-# Interactive prompt for apps
+# Interactive prompts
 # ----------------------
 def prompt_multi_select() -> List[int]:
     lines = ["Select applications to install (enter numbers separated by spaces or commas):"]
@@ -861,6 +971,34 @@ def prompt_multi_select() -> List[int]:
 
 
 # ----------------------
+# Summary writer
+# ----------------------
+def write_summary_logs():
+    # Write actions log to system log and user's summary file
+    try:
+        with open(SYSTEM_LOG, "a") as fh:
+            fh.write(f"\n----- run at {datetime.datetime.now().isoformat()} -----\n")
+            for a in ACTIONS_LOG:
+                fh.write(a + "\n")
+    except Exception as e:
+        log.warning(f"Failed to write system log: {e}")
+
+    try:
+        user_summary = USER_HOME / "startup_setup_summary.txt"
+        with open(user_summary, "a") as fh:
+            fh.write(f"\n----- run at {datetime.datetime.now().isoformat()} -----\n")
+            for a in ACTIONS_LOG:
+                fh.write(a + "\n")
+        # chown it to user
+        try:
+            chown_recursive(user_summary, TARGET_USER)
+        except Exception:
+            pass
+    except Exception as e:
+        log.warning(f"Failed to write user summary: {e}")
+
+
+# ----------------------
 # Main flow
 # ----------------------
 def main():
@@ -869,43 +1007,53 @@ def main():
     # 1) Clone or detect repo
     startup_dir = detect_or_clone_repo()
 
-    # 2) Install core apt packages (noninteractive)
+    # 2) Install core apt packages
     install_apt_packages(APT_PACKAGES)
 
-    # 3) Copy configs from repo into user's home (backups made)
+    # 3) Copy configs into user's home (backups made)
     copy_core_configs(startup_dir)
 
-    # 4) Install battery monitor script + service (and run systemctl --user sequence)
+    # 3.b) Install system-wide rofi theme from repo (backup -> install -> remove others)
+    install_system_rofi_theme_from_repo(startup_dir)
+
+    # 4) Install battery monitor script + service (and run user systemctl sequence)
     install_battery_monitor(startup_dir)
 
-    # 5) Ensure scripts are executable and refresh i3 (Win+Shift+R simulation if i3 is running)
+    # 5) Make scripts executable and refresh i3 (if running)
     set_executables_and_restart_i3()
 
-    # 6) Run any USER_COMMANDS (if you added them to USER_COMMANDS)
+    # 6) Run any USER_COMMANDS
     run_user_commands()
 
-    # 7) Interactive app installation (Spotify included)
+    # 7) Interactive app installation
     selections = prompt_multi_select()
     if not selections:
         log.info("[INFO] No applications selected for installation.")
+        ACTIONS_LOG.append("No apps selected for installation")
     else:
         log.info(f"[INFO] Installing selected applications: {selections}")
         for sel in selections:
             name = APP_OPTIONS.get(sel)
             if not name:
                 log.warning("[WARN] Unknown selection %s; skipping.", sel)
+                ACTIONS_LOG.append(f"Unknown selection {sel}")
                 continue
             fn = INSTALL_DISPATCH.get(name)
             if not fn:
                 log.warning("[WARN] No installer function for %s; skipping.", name)
+                ACTIONS_LOG.append(f"No installer for {name}")
                 continue
             try:
                 log.info("[INSTALL] Starting installer for %s", name)
+                ACTIONS_LOG.append(f"Starting installer for {name}")
                 fn(startup_dir)
             except Exception as e:
                 log.warning("[WARN] Installer for %s raised exception: %s", name, e)
+                ACTIONS_LOG.append(f"Installer {name} exception: {e}")
 
-    log.info("[DONE] Setup complete!")
+    ACTIONS_LOG.append("Setup complete")
+    write_summary_logs()
+    log.info("[DONE] Setup complete! Summary written to system log and user summary file.")
 
 
 if __name__ == "__main__":
