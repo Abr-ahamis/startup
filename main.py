@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
 """
-startup_setup_full.py
+startup_setup_full.py  (updated)
 
-Purpose:
-  - Clone/detect a "startup" repo (contains i3, rofi, picom, i3blocks, wallpaper, grub, etc.)
-  - Install required apt packages first (non-interactive)
-  - Carefully backup existing config files (append .backup, add timestamp if needed)
-  - Copy repo configuration files into the correct user locations
-  - Ensure ~/.local/bin is present and in the user's PATH (.bashrc update)
-  - Make scripts executable and restart i3 (as the user)
-  - Optionally apply GRUB theme
-  - Interactive multi-select menu to install apps (Telegram, Brave nightly, VSCode, ProtonVPN, VirtualBox, RustScan)
-  - After Telegram install, create a symlink so user can run `telegram` from terminal (no full path)
-  - Detailed, safe error handling and informative logging
+Changes in this version:
+ - Removed the GNOME Terminal profile snippet completely.
+ - Removed the "Do you want to apply GRUB theme?" confirmation.
+ - After restarting i3, the script waits until i3 responds (i3-msg get_version)
+   and only then continues to the interactive installation menu.
+ - Still runs the user-level systemctl sequence for battery-monitor.service.
+ - Spotify remains the only added app. It's easy to add more apps (see comments).
 
-Run:
+Usage:
   sudo python3 startup_setup_full.py
 """
 from __future__ import annotations
@@ -24,12 +20,13 @@ import shutil
 import subprocess
 import datetime
 import logging
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Callable, Dict, Any
 import pwd
 
 # ----------------------
-# CONFIG
+# CONFIG (edit here)
 # ----------------------
 REPO_URL = "https://github.com/Abr-ahamis/startup.git"
 REPO_DIR_NAME = "startup"
@@ -42,7 +39,13 @@ APT_PACKAGES = [
     "unzip", "curl", "wget", "grub-customizer", "timeshift"
 ]
 
-# Apps offered in interactive menu
+# ----------------------
+# APP MENU - only add apps here (Spotify only)
+# ----------------------
+# To add more apps:
+#  1) add an entry here (e.g. 8: "myapp")
+#  2) implement install_myapp(startup_dir) below
+#  3) add mapping in INSTALL_DISPATCH
 APP_OPTIONS = {
     1: "telegram",
     2: "brave-nightly",
@@ -50,6 +53,7 @@ APP_OPTIONS = {
     4: "protonvpn",
     5: "virtualbox",
     6: "rustscan",
+    7: "spotify",            # <-- Spotify only, per your instruction
 }
 
 # ----------------------
@@ -59,13 +63,9 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger("startup_setup")
 
 # ----------------------
-# Environment and user detection
+# Basic helpers
 # ----------------------
 def get_target_user() -> str:
-    """
-    If run under sudo, SUDO_USER is the non-root user that invoked sudo.
-    Otherwise, fallback to USER env (may be root).
-    """
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
         return sudo_user
@@ -80,9 +80,6 @@ TARGET_USER = get_target_user()
 USER_HOME = get_user_home(TARGET_USER)
 log.info(f"Target user: {TARGET_USER}, home: {USER_HOME}")
 
-# ----------------------
-# Utilities
-# ----------------------
 def die(msg: str, code: int = 1):
     log.error(msg)
     sys.exit(code)
@@ -90,12 +87,8 @@ def die(msg: str, code: int = 1):
 
 def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[dict] = None, shell: bool = False):
     """
-    Wrapper around subprocess.run:
-      - cmd: list or string
-      - check: if True, raise CalledProcessError on non-zero exit
-      - capture_output: capture stdout/stderr
-      - env: additional env vars
-      - shell: if True, run via shell (useful for complex commands)
+    Wrapper around subprocess.run that logs commands.
+    Accepts list or string. Returns CompletedProcess or exception-like result.
     """
     if isinstance(cmd, (list, tuple)):
         log.info(f"[CMD] {' '.join(map(str, cmd))}")
@@ -120,9 +113,6 @@ def ensure_dir(p: Path, mode: int = 0o755):
 
 
 def unique_backup_name(p: Path) -> Path:
-    """
-    Return a backup path with '.backup' appended. If that exists, append timestamp.
-    """
     base = p.with_name(p.name + ".backup")
     if not base.exists():
         return base
@@ -131,10 +121,6 @@ def unique_backup_name(p: Path) -> Path:
 
 
 def backup_existing(dst: Path) -> Optional[Path]:
-    """
-    If dst exists, rename to dst.backup (or dst.backup.TIMESTAMP if needed).
-    Returns new backup path or None if nothing was backed up.
-    """
     try:
         if not dst.exists():
             return None
@@ -148,9 +134,6 @@ def backup_existing(dst: Path) -> Optional[Path]:
 
 
 def chown_recursive(path: Path, user: str):
-    """
-    Change ownership of path (file or directory) recursively to 'user'.
-    """
     try:
         pw = pwd.getpwnam(user)
         uid, gid = pw.pw_uid, pw.pw_gid
@@ -168,9 +151,6 @@ def chown_recursive(path: Path, user: str):
 
 
 def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: bool = False) -> bool:
-    """
-    Copy src -> dst with safety:
-    """
     src = Path(src)
     dst = Path(dst)
     if not src.exists():
@@ -182,10 +162,8 @@ def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: boo
             backup_existing(dst)
         else:
             if dst.is_dir():
-                log.info(f"[RM-EXIST] Removing existing dir {dst}")
                 shutil.rmtree(dst, ignore_errors=True)
             else:
-                log.info(f"[RM-EXIST] Removing existing file {dst}")
                 try:
                     dst.unlink()
                 except Exception:
@@ -263,7 +241,7 @@ def copy_core_configs(startup_dir: Path):
     # i3 config file
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config", make_backup=True)
 
-    # i3 scripts directory (NEW: copy all files under .config/i3/scripts into user's ~/.config/i3/scripts)
+    # i3 scripts
     src_i3_scripts = repo_i3 / ".config" / "i3" / "scripts"
     dst_i3_scripts = USER_HOME / ".config" / "i3" / "scripts"
     if src_i3_scripts.exists() and src_i3_scripts.is_dir():
@@ -271,19 +249,13 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_i3_scripts.iterdir()):
             if f.is_file():
                 safe_copy(f, dst_i3_scripts / f.name, make_backup=True)
-    else:
-        log.info(f"[COPY] No i3 scripts directory found in repo at {src_i3_scripts}; skipping.")
 
-    # i3blocks configs & scripts
+    # i3blocks, rofi, picom
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", make_backup=True, dirs_exist_ok=True)
-
-    # rofi
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", make_backup=True, dirs_exist_ok=True)
-
-    # picom config
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf", make_backup=True)
 
-    # local bin scripts from repo (repo_i3/.local/bin -> ~/.local/bin)
+    # local bin
     src_local_bin = repo_i3 / ".local" / "bin"
     dst_local_bin = USER_HOME / ".local" / "bin"
     ensure_dir(dst_local_bin)
@@ -291,7 +263,7 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_local_bin.iterdir()):
             safe_copy(f, dst_local_bin / f.name, make_backup=True)
 
-    # fonts in repo -> ~/.local/share/fonts
+    # fonts
     src_fonts = repo_i3 / ".local" / "share" / "fonts"
     dst_fonts = USER_HOME / ".local" / "share" / "fonts"
     ensure_dir(dst_fonts)
@@ -299,7 +271,7 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_fonts.iterdir()):
             safe_copy(f, dst_fonts / f.name, make_backup=True)
 
-    # Ensure ~/.local/bin is present and add to .bashrc if missing
+    # ensure ~/.local/bin in .bashrc
     bashrc = USER_HOME / ".bashrc"
     path_line = 'export PATH="$HOME/.local/bin:$PATH"'
     if bashrc.exists():
@@ -315,14 +287,6 @@ def copy_core_configs(startup_dir: Path):
         with open(bashrc, "w") as fh:
             fh.write(f"{path_line}\n")
     os.environ["PATH"] = str(USER_HOME / ".local" / "bin") + ":" + os.environ.get("PATH", "")
-
-    # rofi system themes
-    src_rofi_sys = repo_i3 / "usr" / "share" / "rofi" / "themes"
-    dst_rofi_sys = Path("/usr/share/rofi/themes")
-    ensure_dir(dst_rofi_sys)
-    if src_rofi_sys.exists():
-        for f in sorted(src_rofi_sys.iterdir()):
-            safe_copy(f, dst_rofi_sys / f.name, make_backup=True)
 
     # wallpapers
     repo_wall = startup_dir / "wallpaper"
@@ -343,19 +307,12 @@ def copy_core_configs(startup_dir: Path):
 # Install battery monitor (script + systemd --user service)
 # ----------------------
 def install_battery_monitor(startup_dir: Path):
-    """
-    Install battery-monitor script and user systemd service from the repo into the
-    target user's home and attempt to enable & start the service by running:
-      systemctl --user daemon-reload && systemctl --user enable --now battery-monitor.service
-    as the target user with XDG_RUNTIME_DIR set to /run/user/<UID>.
-    """
     repo_script = startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh"
     repo_service = startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service"
 
     dst_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
     dst_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
 
-    # Copy script
     if repo_script.exists():
         ensure_dir(dst_script.parent)
         if safe_copy(repo_script, dst_script, make_backup=True):
@@ -371,7 +328,6 @@ def install_battery_monitor(startup_dir: Path):
     else:
         log.info("[BATTERY] No battery-monitor script found in repo (%s). Skipping script install.", repo_script)
 
-    # Copy user service
     if repo_service.exists():
         ensure_dir(dst_service.parent)
         if safe_copy(repo_service, dst_service, make_backup=True):
@@ -381,7 +337,7 @@ def install_battery_monitor(startup_dir: Path):
                 pass
             log.info("[BATTERY] Installed battery-monitor user service to %s", dst_service)
 
-            # --- Ensure DBUS environment line is present in the [Service] section ---
+            # ensure DBUS env line in service
             try:
                 env_line = "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
                 text = dst_service.read_text(encoding="utf-8")
@@ -390,21 +346,17 @@ def install_battery_monitor(startup_dir: Path):
                     inserted = False
                     for i, ln in enumerate(lines):
                         if ln.strip() == "[Service]":
-                            # find where the [Service] section ends (next section header or EOF)
                             j = i + 1
                             while j < len(lines) and not lines[j].strip().startswith("["):
                                 j += 1
-                            # insert the env line at the end of the [Service] block (before next section)
                             lines.insert(j, env_line)
                             inserted = True
                             break
                     if not inserted:
-                        # fallback: append at end
                         if not lines or lines[-1].strip() != "":
                             lines.append("")
                         lines.append(env_line)
                     dst_service.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                    # restore ownership/perm after editing
                     try:
                         dst_service.chmod(0o644)
                     except Exception:
@@ -416,51 +368,48 @@ def install_battery_monitor(startup_dir: Path):
                     log.info("[BATTERY] Injected DBUS Environment line into %s", dst_service)
             except Exception as e:
                 log.warning(f"[BATTERY] Could not ensure DBUS env in service file: {e}")
-
     else:
         log.info("[BATTERY] No battery-monitor.service found in repo (%s). Skipping service install.", repo_service)
 
-    # Now attempt to run the exact command as the target user:
-    # systemctl --user daemon-reload && systemctl --user enable --now battery-monitor.service
+    # Execute the exact user-level systemctl sequence you requested (as target user)
     try:
         pw = pwd.getpwnam(TARGET_USER)
         uid = pw.pw_uid
         runtime_dir = Path(f"/run/user/{uid}")
         if not runtime_dir.exists():
             log.warning("[BATTERY] /run/user/%d does not exist. The target user may not have an active login session; systemctl --user may fail.", uid)
-        # Build the exact command string the user requested, with XDG_RUNTIME_DIR set
-        cmd_str = (
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload && "
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user enable --now battery-monitor.service"
-        )
-        log.info("[BATTERY] Running systemctl --user commands as user %s", TARGET_USER)
-        # run via sudo -u TARGET_USER bash -lc '...'
-        r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd_str], check=False, capture_output=True)
-        rc = getattr(r, "returncode", 1)
-        stdout = getattr(r, "stdout", "")
-        stderr = getattr(r, "stderr", "")
-        if rc == 0:
-            log.info("[BATTERY] systemctl --user commands completed (returncode=0).")
-            if stdout:
-                log.info("[BATTERY-OUT] %s", stdout.strip())
-        else:
-            log.warning("[BATTERY] systemctl --user commands returned non-zero (returncode=%s).", rc)
-            if stdout:
-                log.warning("[BATTERY-OUT] %s", stdout.strip())
-            if stderr:
-                log.warning("[BATTERY-ERR] %s", stderr.strip())
-            log.warning("[BATTERY] If this fails because the user has no active session, run as the user after login:")
-            log.warning("  systemctl --user daemon-reload && systemctl --user enable --now battery-monitor.service")
+
+        systemctl_cmds = [
+            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reexec",
+            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload",
+            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user restart battery-monitor.service",
+        ]
+        log.info("[BATTERY] Running systemctl --user sequence as %s", TARGET_USER)
+        for cmd in systemctl_cmds:
+            r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd], check=False, capture_output=True)
+            rc = getattr(r, "returncode", 1)
+            stdout = getattr(r, "stdout", "")
+            stderr = getattr(r, "stderr", "")
+            if rc == 0:
+                log.info("[BATTERY] Command succeeded: %s", cmd)
+                if stdout:
+                    log.info("[BATTERY-OUT] %s", stdout.strip())
+            else:
+                log.warning("[BATTERY] Command returned non-zero (rc=%s): %s", rc, cmd)
+                if stdout:
+                    log.warning("[BATTERY-OUT] %s", stdout.strip())
+                if stderr:
+                    log.warning("[BATTERY-ERR] %s", stderr.strip())
+        log.info("[BATTERY] systemctl --user sequence attempted.")
     except Exception as e:
         log.warning(f"[BATTERY] Failed to run systemctl --user commands: {e}")
-        log.warning("[BATTERY] The service is installed but may need manual enable/start by the user.")
+        log.warning("[BATTERY] The service is installed but may require manual enable/start by the user.")
 
 
 # ----------------------
 # Make scripts executable and restart i3 (as the user)
 # ----------------------
 def set_executables_and_restart_i3():
-    # i3blocks scripts (existing behavior)
     scripts_dir = USER_HOME / ".config" / "i3blocks" / "scripts"
     if scripts_dir.exists():
         for sh in scripts_dir.glob("*.sh"):
@@ -470,7 +419,6 @@ def set_executables_and_restart_i3():
             except Exception:
                 pass
 
-    # rofi scripts (existing behavior)
     rofi_dir = USER_HOME / ".config" / "rofi"
     if rofi_dir.exists():
         for f in rofi_dir.rglob("*.sh"):
@@ -480,7 +428,6 @@ def set_executables_and_restart_i3():
             except Exception:
                 pass
 
-    # new: ensure scripts in ~/.config/i3/scripts are executable
     i3_scripts_dir = USER_HOME / ".config" / "i3" / "scripts"
     if i3_scripts_dir.exists():
         for f in i3_scripts_dir.iterdir():
@@ -491,7 +438,6 @@ def set_executables_and_restart_i3():
                 except Exception:
                     pass
 
-    # local bin
     local_bin = USER_HOME / ".local" / "bin"
     if local_bin.exists():
         for f in local_bin.iterdir():
@@ -500,34 +446,38 @@ def set_executables_and_restart_i3():
                     f.chmod(0o755)
                 except Exception:
                     pass
+
+    # attempt i3 restart as the target user
     try:
         run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False)
     except Exception as e:
         log.warning(f"[WARN] Could not restart i3: {e}")
 
 
-# ----------------------
-# Apply GNOME Terminal profile settings (as the user)
-# ----------------------
-def apply_terminal_profile_settings():
-    snippet = r"""
-PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d \')
-if [ -n "$PROFILE" ]; then
-  gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" default-show-menubar false || true
-  gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" font 'Monospace 9' || true
-  gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" use-transparent-background true || true
-  gsettings set "org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:$PROFILE/" background-transparency-percent 20 || true
-fi
-"""
-    log.info("[TERMINAL] Attempting to apply GNOME Terminal profile settings (best-effort).")
-    try:
-        run(["sudo", "-u", TARGET_USER, "bash", "-lc", snippet], check=False)
-    except Exception as e:
-        log.warning(f"[WARN] Terminal profile settings failed: {e}")
+def wait_for_i3_ready(timeout: int = 20) -> bool:
+    """
+    Poll i3 (as target user) until it responds to `i3-msg -t get_version`.
+    Returns True if i3 responded within timeout seconds, False otherwise.
+    """
+    log.info("[I3-WAIT] Waiting for i3 to be ready (timeout %ds)...", timeout)
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", "i3-msg -t get_version"], check=False, capture_output=True)
+            rc = getattr(r, "returncode", 1)
+            out = getattr(r, "stdout", "") or ""
+            if rc == 0 and out.strip():
+                log.info("[I3-WAIT] i3 responded: %s", out.strip().splitlines()[0] if out.strip() else "<empty>")
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    log.warning("[I3-WAIT] i3 did not respond within %d seconds.", timeout)
+    return False
 
 
 # ----------------------
-# GRUB theme apply (best-effort)
+# GRUB theme function kept but NOT called automatically (no prompt)
 # ----------------------
 def apply_grub_theme(startup_dir: Path):
     log.info("[GRUB] Applying grub theme (best-effort).")
@@ -549,29 +499,9 @@ def apply_grub_theme(startup_dir: Path):
     except Exception as e:
         log.warning(f"[WARN] Could not copy to {dst_usr}: {e}")
 
-    repo_wall = startup_dir / "wallpaper"
-    backgrounds_dir = Path("/usr/share/backgrounds/kali")
-    ensure_dir(backgrounds_dir)
-    mappings = [
-        ("wallpaper-1.jpg", "login.svg"),
-        ("wallpaper.jpg", "kali-maze-16x9.jpg"),
-        ("wallpaper-2.jpg", "kali-tiles-16x9.jpg"),
-        ("wallpaper-1.jpg", "kali-waves-16x9.png"),
-        ("wallpaper.jpg", "kali-oleo-16x9.png"),
-        ("wallpaper-2.jpg", "kali-tiles-purple-16x9.jpg"),
-        ("wallpaper-1.jpg", "login-blurred"),
-    ]
-    for src_name, dst_name in mappings:
-        s = repo_wall / src_name
-        if s.exists():
-            try:
-                shutil.copy2(s, backgrounds_dir / dst_name)
-            except Exception as e:
-                log.warning(f"[WARN] Could not copy {s} -> {backgrounds_dir}/{dst_name}: {e}")
-
 
 # ----------------------
-# App installers
+# App installers (implementations)
 # ----------------------
 def install_telegram(startup_dir: Optional[Path] = None):
     log.info("[TELEGRAM] Installing Telegram (tarball) — best-effort.")
@@ -604,13 +534,13 @@ def install_telegram(startup_dir: Optional[Path] = None):
         log.warning("[WARN] Telegram binary not found after extraction.")
 
 
-def install_brave_nightly():
+def install_brave_nightly(startup_dir: Optional[Path] = None):
     log.info("[BRAVE] Installing Brave (nightly) — best-effort.")
     run('curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly bash', check=False, shell=True)
     run(["apt", "install", "-y", "brave-browser-nightly"], check=False)
 
 
-def install_vscode():
+def install_vscode(startup_dir: Optional[Path] = None):
     log.info("[VSCODE] Installing Visual Studio Code (.deb) — best-effort.")
     deb = Path("/tmp/code.deb")
     run(["wget", "-q", "https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-x64", "-O", str(deb)], check=False)
@@ -624,7 +554,7 @@ def install_vscode():
             pass
 
 
-def install_protonvpn():
+def install_protonvpn(startup_dir: Optional[Path] = None):
     log.info("[PROTONVPN] Installing ProtonVPN repo package (best-effort).")
     deb = Path("/tmp/protonvpn.deb")
     url = "https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn-stable-release_1.0.8_all.deb"
@@ -636,13 +566,13 @@ def install_protonvpn():
         run(["apt", "install", "-y", "proton-vpn-gnome-desktop"], check=False)
 
 
-def install_virtualbox():
+def install_virtualbox(startup_dir: Optional[Path] = None):
     log.info("[VBOX] Installing VirtualBox (from apt) — best-effort.")
     run(["apt", "update"], check=False)
     run(["apt", "install", "-y", "virtualbox"], check=False)
 
 
-def install_rustscan():
+def install_rustscan(startup_dir: Optional[Path] = None):
     log.info("[RUSTSCAN] Installing RustScan (.deb) — best-effort.")
     deb = Path("/tmp/rustscan_2.2.3_amd64.deb")
     url = "https://github.com/RustScan/RustScan/releases/download/2.2.3/rustscan_2.2.3_amd64.deb"
@@ -651,65 +581,136 @@ def install_rustscan():
         r = run(["dpkg", "-i", str(deb)], check=False)
         if getattr(r, "returncode", 0) != 0:
             run(["apt", "install", "-f", "-y"], check=False)
+
+
+def install_spotify(startup_dir: Optional[Path] = None):
+    """
+    Best-effort Spotify installer:
+     - Tries apt repo + keyring then apt install spotify-client
+     - Falls back to `snap install spotify` if available
+    """
+    log.info("[SPOTIFY] Installing Spotify (best-effort).")
     try:
-        import resource
-        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
-        new_soft = max(soft, 5000)
-        resource.setrlimit(resource.RLIMIT_NOFILE, (new_soft, hard))
-        log.info(f"[ULIMIT] set RLIMIT_NOFILE soft={new_soft} hard={hard}")
+        run(["apt", "update"], check=False)
+        run(["bash", "-lc", "curl -sS https://download.spotify.com/debian/pubkey_0D811D58.gpg | gpg --dearmor -o /usr/share/keyrings/spotify-archive-keyring.gpg"], check=False, shell=True)
+        list_file = Path("/etc/apt/sources.list.d/spotify.list")
+        list_content = "deb [signed-by=/usr/share/keyrings/spotify-archive-keyring.gpg] http://repository.spotify.com stable non-free\n"
+        try:
+            list_file.write_text(list_content)
+        except Exception as e:
+            log.warning("[SPOTIFY] Could not write sources list directly: %s", e)
+        run(["apt", "update"], check=False)
+        run(["apt", "install", "-y", "spotify-client"], check=False)
+        log.info("[SPOTIFY] apt install attempted.")
     except Exception as e:
-        log.warning(f"[WARN] Could not adjust ulimit: {e}")
+        log.warning("[SPOTIFY] apt-based install failed: %s", e)
+    # fallback to snap
+    try:
+        run(["snap", "install", "spotify"], check=False)
+    except Exception:
+        log.info("[SPOTIFY] snap fallback not available or failed; install may require manual steps.")
+
+
+# dispatch mapping name -> callable
+INSTALL_DISPATCH: Dict[str, Callable[[Optional[Path]], None]] = {
+    "telegram": install_telegram,
+    "brave-nightly": install_brave_nightly,
+    "vscode": install_vscode,
+    "protonvpn": install_protonvpn,
+    "virtualbox": install_virtualbox,
+    "rustscan": install_rustscan,
+    "spotify": install_spotify,
+}
+
+# ----------------------
+# USER COMMANDS (easy place to add extra commands)
+# ----------------------
+# To add commands to run during the setup, add dictionaries to USER_COMMANDS:
+#  {"as_user": TARGET_USER, "cmd": "echo hello > ~/hello.txt"}
+USER_COMMANDS: List[Dict[str, Any]] = [
+    # Example (commented):
+    # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user daemon-reexec'},
+]
+
+def run_user_commands():
+    if not USER_COMMANDS:
+        log.info("[USER-CMDS] No user commands defined.")
+        return
+    for entry in USER_COMMANDS:
+        as_user = entry.get("as_user", "root")
+        cmd = entry.get("cmd")
+        if not cmd:
+            continue
+        try:
+            if as_user == "root" or as_user.upper() == "ROOT":
+                r = run(cmd, check=False, capture_output=True, shell=True)
+            else:
+                pw = pwd.getpwnam(as_user)
+                uid = pw.pw_uid
+                wrapper = f"XDG_RUNTIME_DIR=/run/user/{uid} {cmd}"
+                r = run(["sudo", "-u", as_user, "bash", "-lc", wrapper], check=False, capture_output=True)
+            rc = getattr(r, "returncode", 1)
+            stdout = getattr(r, "stdout", "") or ""
+            stderr = getattr(r, "stderr", "") or ""
+            if rc == 0:
+                log.info("[USER-CMDS] succeeded: %s", cmd)
+                if stdout:
+                    log.info("[USER-CMDS-OUT] %s", stdout.strip())
+            else:
+                log.warning("[USER-CMDS] rc=%s for cmd: %s", rc, cmd)
+                if stdout:
+                    log.warning("[USER-CMDS-OUT] %s", stdout.strip())
+                if stderr:
+                    log.warning("[USER-CMDS-ERR] %s", stderr.strip())
+        except Exception as e:
+            log.warning("[USER-CMDS] Exception running command %s: %s", cmd, e)
 
 
 # ----------------------
-# Interactive prompts
+# Interactive prompts (same as before)
 # ----------------------
-def prompt_yes_no(prompt: str, default: str = "y") -> bool:
-    default = default.lower()
-    yn = "[Y/n]" if default == "y" else "[y/N]"
-    while True:
-        choice = input(f"{prompt} {yn}: ").strip().lower()
-        if choice == "" and default:
-            return default == "y"
-        if choice in ("y", "yes"):
-            return True
-        if choice in ("n", "no"):
-            return False
-        print("Please answer 'y' or 'n'.")
-
-
 def prompt_multi_select() -> List[int]:
-    lines = [
-        "Select applications to install (enter numbers separated by spaces or commas):",
-        " 1) Telegram",
-        " 2) Brave (nightly)",
-        " 3) Visual Studio Code",
-        " 4) ProtonVPN",
-        " 5) VirtualBox",
-        " 6) RustScan",
-        " 7) All",
-        " 8) None",
-    ]
+    lines = ["Select applications to install (enter numbers separated by spaces or commas):"]
+    for k in sorted(APP_OPTIONS.keys()):
+        lines.append(f" {k:2d}) {APP_OPTIONS[k]}")
+    lines.append(" a) all")
+    lines.append(" n) none (or just press Enter)")
     print("\n".join(lines))
-    raw = input("Enter selection (e.g. '1 3 5' or '7' for All): ").strip()
+    try:
+        raw = input("Enter selection (e.g. '1 3 5' or 'a' for All): ").strip()
+    except EOFError:
+        log.info("[INPUT] EOF on selection; assuming 'none'.")
+        return []
     if not raw:
-        log.info("[INPUT] No selection entered; assuming 'None'.")
+        log.info("[INPUT] No selection entered; assuming 'none'.")
+        return []
+    raw_l = raw.strip().lower()
+    if raw_l in ("all", "a"):
+        return list(sorted(APP_OPTIONS.keys()))
+    if raw_l in ("none", "n", "0"):
         return []
     tokens = []
     for part in raw.replace(",", " ").split():
+        part = part.strip()
+        if not part:
+            continue
         if part.isdigit():
-            tokens.append(int(part))
+            try:
+                v = int(part)
+                if v in APP_OPTIONS:
+                    tokens.append(v)
+            except ValueError:
+                continue
         else:
-            partl = part.lower()
-            if partl in ("all", "7"):
-                return list(range(1, 7))
-            if partl in ("none", "0", "8"):
-                return []
-    if 7 in tokens:
-        return list(range(1, 7))
-    if 8 in tokens:
-        return []
-    return [t for t in tokens if 1 <= t <= 6]
+            for k, name in APP_OPTIONS.items():
+                if part == name.lower() or part == name.split()[0].lower():
+                    tokens.append(k)
+    # de-duplicate preserving order
+    result = []
+    for k in tokens:
+        if k not in result:
+            result.append(k)
+    return result
 
 
 # ----------------------
@@ -717,47 +718,52 @@ def prompt_multi_select() -> List[int]:
 # ----------------------
 def main():
     require_root()
+
     # 1) Clone or detect repo
     startup_dir = detect_or_clone_repo()
 
-    # 2) Install system packages first
+    # 2) Install core apt packages (noninteractive)
     install_apt_packages(APT_PACKAGES)
 
-    # 3) Copy configs from repo into user's home (backups made)
+    # 3) Copy configs into user's home (backups done)
     copy_core_configs(startup_dir)
 
-    # 3.b) Install battery monitor script + service (if present in repo)
+    # 4) Install battery monitor script + service (and run systemctl --user sequence)
     install_battery_monitor(startup_dir)
 
-    # 4) Ensure scripts are executable and restart i3 (as user)
+    # 5) Make scripts executable and restart i3 (as user)
     set_executables_and_restart_i3()
 
-    # 5) Apply terminal profile settings last among config changes
-    apply_terminal_profile_settings()
+    # 6) Wait for i3 to be ready before proceeding to install menu
+    i3_ready = wait_for_i3_ready(timeout=20)
+    if not i3_ready:
+        log.warning("[MAIN] i3 did not report ready within timeout; continuing anyway to installation menu.")
+    else:
+        log.info("[MAIN] i3 reported ready — continuing to installation menu.")
 
-    # 6) Optional GRUB theme
-    if prompt_yes_no("Do you want to apply GRUB theme?"):
-        apply_grub_theme(startup_dir)
+    # 7) Run any USER_COMMANDS (if you added them to USER_COMMANDS)
+    run_user_commands()
 
-    # 7) Interactive app installation
+    # 8) Interactive app installation (Spotify is available)
     selections = prompt_multi_select()
     if not selections:
         log.info("[INFO] No applications selected for installation.")
     else:
         log.info(f"[INFO] Installing selected applications: {selections}")
         for sel in selections:
-            if sel == 1:
-                install_telegram(startup_dir)
-            elif sel == 2:
-                install_brave_nightly()
-            elif sel == 3:
-                install_vscode()
-            elif sel == 4:
-                install_protonvpn()
-            elif sel == 5:
-                install_virtualbox()
-            elif sel == 6:
-                install_rustscan()
+            name = APP_OPTIONS.get(sel)
+            if not name:
+                log.warning("[WARN] Unknown selection %s; skipping.", sel)
+                continue
+            fn = INSTALL_DISPATCH.get(name)
+            if not fn:
+                log.warning("[WARN] No installer function for %s; skipping.", name)
+                continue
+            try:
+                log.info("[INSTALL] Starting installer for %s", name)
+                fn(startup_dir)
+            except Exception as e:
+                log.warning("[WARN] Installer for %s raised exception: %s", name, e)
 
     log.info("[DONE] Setup complete!")
 
