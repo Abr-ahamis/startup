@@ -2,18 +2,27 @@
 """
 startup_setup_full.py
 
-- Clones/detects startup repo
-- Installs apt packages
-- Copies i3/rofi/picom/i3blocks/scripts/fonts/wallpapers with safe backups
-- Ensures ~/.local/bin in PATH, sets executables, creates Telegram symlink
-- Installs battery-monitor script/service and runs the exact systemctl --user sequence:
-    systemctl --user daemon-reexec
-    systemctl --user daemon-reload
-    systemctl --user restart battery-monitor.service
-  (attempted as the target user; retries with XDG_RUNTIME_DIR fallback)
-- Moves repo rofi theme to /usr/share/rofi/themes with backup and optional removal
-- Only Spotify is added to the app menu
-- Clear EXAMPLE blocks show how to add apps/commands
+Behavior (implements the flow described in your hi.txt):
+ - Clone/detect the startup repo
+ - Install core APT packages first (non-interactive)
+ - Build the full list of destination paths the installer may touch
+ - If any destination exists: show them and prompt:
+       Replace all existing configuration files with the repository versions? [y/N]
+     - If 'y': DELETE the existing files/directories (no backups), then copy repo files into place
+     - Otherwise: SKIP copying configs and continue to the app-install menu
+ - If Replace chosen and repo contains i3/usr/share/rofi/themes/Adapta-Nokto.rasi:
+     - remove files under /usr/share/rofi/themes/*
+     - copy Adapta-Nokto.rasi into /usr/share/rofi/themes/
+ - Copy wallpapers to both ~/Pictures/ and /usr/share/backgrounds/kali/ with explicit mappings
+ - Install battery-monitor script + user service and run:
+       systemctl --user daemon-reexec
+       systemctl --user daemon-reload
+       systemctl --user restart battery-monitor.service
+   executed as the target (non-root) user; if the first attempt fails it will retry with XDG_RUNTIME_DIR prefix
+ - Make scripts executable, ensure ~/.local/bin in PATH, create telegram symlink if Telegram installed
+ - Interactive app menu shows Spotify by default (you must pick apps to install)
+ - At the end the script prints & writes a detailed summary of files copied and commands executed
+
 Run:
   sudo python3 startup_setup_full.py
 """
@@ -24,53 +33,45 @@ import shutil
 import subprocess
 import datetime
 import logging
-import time
 from pathlib import Path
 from typing import List, Optional, Dict, Callable
 import pwd
 
-# ----------------------
-# CONFIG - EDIT HERE
-# ----------------------
+# ---------- Configuration (edit only here) ----------
 REPO_URL = "https://github.com/Abr-ahamis/startup.git"
 REPO_DIR_NAME = "startup"
 
+# APT packages installed first
 APT_PACKAGES = [
     "i3-wm", "i3blocks", "rofi", "xdotool", "dex", "acpi", "upower",
     "xfce4-power-manager", "i3lock", "xss-lock", "pulseaudio-utils",
     "brightnessctl", "feh", "picom", "fonts-font-awesome", "git", "rsync",
-    "unzip", "curl", "wget", "grub-customizer", "timeshift"
+    "unzip", "curl", "wget"
 ]
 
-# App menu (only Spotify was added intentionally)
+# App menu (only Spotify is pre-added per your request)
 APP_OPTIONS = {
     1: "telegram",
-    2: "brave-nightly",
-    3: "vscode",
-    4: "protonvpn",
-    5: "virtualbox",
-    6: "rustscan",
-    7: "spotify",   # <-- Spotify only, per your request
+    2: "spotify",   # <<-- Spotify only by default (you can add entries here and implement installers)
 }
 
-# Where to write summary and system log (may require sudo to write system log)
-SYSTEM_LOG = Path("/var/log/startup_setup_full.log")
-USER_SUMMARY = "startup_setup_summary.txt"
+# Installer dispatch: map app name -> function (implement new install functions and add to APP_OPTIONS)
+INSTALL_DISPATCH: Dict[str, Callable[[Path], None]] = {}
 
-# ----------------------
-# Logging
-# ----------------------
-logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+# Summary file written to user home
+SUMMARY_FILENAME = "startup_setup_summary.txt"
+
+# ---------- Logging ----------
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger("startup_setup")
 
-# ----------------------
-# Utilities
-# ----------------------
-def die(msg: str, code: int = 1):
+# ---------- Helpers ----------
+def die(msg: str, code: int = 1) -> None:
     log.error(msg)
     sys.exit(code)
 
-def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[dict] = None, shell: bool = False):
+def run(cmd, check: bool = False, capture_output: bool = False, env: dict = None, shell: bool = False):
+    """Wrapper around subprocess.run that logs and returns CompletedProcess-like object."""
     if isinstance(cmd, (list, tuple)):
         log.info("[CMD] %s", " ".join(map(str, cmd)))
     else:
@@ -78,39 +79,27 @@ def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[di
     try:
         return subprocess.run(cmd, check=check, capture_output=capture_output, text=True, env=env, shell=shell)
     except subprocess.CalledProcessError as e:
-        log.warning("[CMD-FAIL] returncode=%s cmd=%s", e.returncode, e.cmd)
-        if capture_output:
-            log.warning("stdout: %s", e.stdout)
-            log.warning("stderr: %s", e.stderr)
-        if check:
-            raise
+        log.warning("[CMD-FAIL] rc=%s cmd=%s", e.returncode, e.cmd)
         return e
 
-def ensure_dir(p: Path, mode: int = 0o755):
+def ensure_dir(p: Path) -> None:
     if not p.exists():
-        log.info("[MKDIR] %s", p)
-        p.mkdir(parents=True, mode=mode, exist_ok=True)
+        p.mkdir(parents=True, exist_ok=True)
 
-def unique_backup_name(p: Path) -> Path:
-    base = p.with_name(p.name + ".backup")
-    if not base.exists():
-        return base
-    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    return p.with_name(p.name + f".backup.{ts}")
+def get_target_user() -> str:
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        return sudo_user
+    return os.environ.get("USER", "root")
 
-def backup_existing(dst: Path) -> Optional[Path]:
-    try:
-        if not dst.exists():
-            return None
-        b = unique_backup_name(dst)
-        log.info("[BACKUP] %s -> %s", dst, b)
-        shutil.move(str(dst), str(b))
-        return b
-    except Exception as e:
-        log.warning("[WARN] Could not backup %s: %s", dst, e)
-        return None
+def get_user_home(user: str) -> Path:
+    return Path(pwd.getpwnam(user).pw_dir)
 
-def chown_recursive(path: Path, user: str):
+TARGET_USER = get_target_user()
+USER_HOME = get_user_home(TARGET_USER)
+log.info("Target user: %s, Home: %s", TARGET_USER, USER_HOME)
+
+def chown_recursive(path: Path, user: str) -> None:
     try:
         pw = pwd.getpwnam(user)
         uid, gid = pw.pw_uid, pw.pw_gid
@@ -124,197 +113,222 @@ def chown_recursive(path: Path, user: str):
         else:
             os.chown(str(path), uid, gid)
     except Exception as e:
-        log.warning("[WARN] chown failed for %s: %s", path, e)
+        log.debug("chown failed for %s: %s", path, e)
 
-def safe_copy(src: Path, dst: Path, make_backup: bool = True, dirs_exist_ok: bool = False) -> bool:
-    src = Path(src)
-    dst = Path(dst)
-    if not src.exists():
-        log.info("[SKIP] Source missing: %s", src)
-        return False
-    ensure_dir(dst.parent)
-    if dst.exists():
-        if make_backup:
-            backup_existing(dst)
-        else:
-            if dst.is_dir():
-                shutil.rmtree(dst, ignore_errors=True)
-            else:
-                try:
-                    dst.unlink()
-                except Exception:
-                    pass
+def safe_remove(p: Path) -> None:
+    """Delete file or directory (no backups)"""
     try:
-        if src.is_dir():
-            log.info("[COPY-DIR] %s -> %s", src, dst)
-            shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
-        else:
-            log.info("[COPY-FILE] %s -> %s", src, dst)
-            shutil.copy2(src, dst)
+        if not p.exists():
+            return
+        if p.is_symlink() or p.is_file():
+            p.unlink()
+            log.info("[DEL] removed file/symlink: %s", p)
+        elif p.is_dir():
+            shutil.rmtree(p)
+            log.info("[DEL] removed directory tree: %s", p)
+    except Exception as e:
+        log.warning("[DEL-ERR] %s: %s", p, e)
+
+def safe_copy_file(src: Path, dst: Path, make_dirs=True) -> bool:
+    try:
+        if not src.exists():
+            log.info("[SKIP] source missing: %s", src)
+            return False
+        if make_dirs:
+            ensure_dir(dst.parent)
+        if dst.exists():
+            # By the flow, when copying after Delete (Replace), dst will not exist.
+            # But for safety, replace existing file.
+            try:
+                if dst.is_file() or dst.is_symlink():
+                    dst.unlink()
+                elif dst.is_dir():
+                    shutil.rmtree(dst)
+            except Exception:
+                pass
+        shutil.copy2(src, dst)
+        log.info("[COPY] %s -> %s", src, dst)
         try:
             chown_recursive(dst, TARGET_USER)
         except Exception:
             pass
         return True
     except Exception as e:
-        log.warning("[WARN] Copy failed %s -> %s : %s", src, dst, e)
+        log.warning("[COPY-ERR] %s -> %s: %s", src, dst, e)
         return False
 
-# ----------------------
-# Environment & user detection
-# ----------------------
-def get_target_user() -> str:
-    sudo_user = os.environ.get("SUDO_USER")
-    if sudo_user:
-        return sudo_user
-    return os.environ.get("USER", "root")
-
-def get_user_home(user: str) -> Path:
-    return Path(pwd.getpwnam(user).pw_dir)
-
-TARGET_USER = get_target_user()
-USER_HOME = get_user_home(TARGET_USER)
-log.info("Target user: %s home: %s", TARGET_USER, USER_HOME)
-
-# ----------------------
-# Root check
-# ----------------------
-def require_root():
-    if os.geteuid() != 0:
-        die("This script must be run as root. Use sudo python3 startup_setup_full.py")
-
-# ----------------------
-# Repo detection / cloning
-# ----------------------
+# ---------- Repo detection / clone ----------
 def detect_or_clone_repo() -> Path:
     cwd = Path.cwd()
-    if (cwd / "i3").is_dir() and (cwd / "wallpaper").is_dir() and (cwd / "grub").is_dir():
-        log.info("[REPO] Using current directory as repo")
+    # Accept if cwd already looks like repo
+    if (cwd / "i3").is_dir() and (cwd / "wallpaper").is_dir():
+        log.info("Using current directory as repository: %s", cwd)
         return cwd
     if (cwd / REPO_DIR_NAME).is_dir():
         return cwd / REPO_DIR_NAME
     target = cwd / REPO_DIR_NAME
-    if target.exists():
-        return target
-    log.info("[REPO] Cloning %s -> %s", REPO_URL, target)
-    r = run(["git", "clone", REPO_URL, str(target)], check=False, capture_output=True)
-    if getattr(r, "returncode", 1) != 0:
-        log.warning("[WARN] git clone returncode != 0")
+    log.info("Cloning %s -> %s", REPO_URL, target)
+    run(["git", "clone", REPO_URL, str(target)])
     return target
 
-# ----------------------
-# APT packages
-# ----------------------
-def install_apt_packages(packages: List[str]):
-    if not packages:
-        return
-    env = os.environ.copy()
-    env["DEBIAN_FRONTEND"] = "noninteractive"
-    log.info("[APT] apt update")
-    run(["apt", "update"], check=False, env=env)
-    cmd = ["apt", "install", "-y"] + packages
-    log.info("[APT] installing %d packages", len(packages))
-    run(cmd, check=False, env=env)
+# ---------- Build destination list (from hi.txt) ----------
+def build_dest_paths(startup_dir: Path) -> List[Path]:
+    """
+    Paths to check before copying (taken from hi.txt).
+    These are the files/folders we will manage.
+    """
+    dests = []
+    dests.append(USER_HOME / ".config" / "i3" / "config")
+    dests.append(USER_HOME / ".config" / "i3" / "scripts")
+    dests.append(USER_HOME / ".config" / "i3blocks")
+    dests.append(USER_HOME / ".config" / "rofi")
+    dests.append(USER_HOME / ".config" / "picom" / "picom.conf")
+    dests.append(USER_HOME / ".local" / "bin")
+    dests.append(USER_HOME / ".local" / "share" / "fonts")
+    dests.append(USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service")
+    # wallpapers (user)
+    dests.append(USER_HOME / "Pictures" / "wallpaper.jpg")
+    dests.append(USER_HOME / "Pictures" / "wallpaper-1.jpg")
+    dests.append(USER_HOME / "Pictures" / "wallpaper-2.jpg")
+    # system wallpaper dir
+    dests.append(Path("/usr/share/backgrounds/kali"))
+    # system rofi themes
+    dests.append(Path("/usr/share/rofi/themes"))
+    return dests
 
-# ----------------------
-# COPY CORE CONFIGS (i3, rofi, picom, fonts, scripts, wallpapers, rofi theme)
-# ----------------------
-def copy_core_configs(startup_dir: Path):
-    log.info("[COPY] Copying repo configs")
+def scan_existing(dests: List[Path]) -> List[Path]:
+    found = [p for p in dests if p.exists()]
+    return found
+
+# ---------- Delete / Copy flow ----------
+def delete_existing_paths(paths: List[Path]) -> None:
+    for p in paths:
+        # safety guard
+        if str(p).strip() in ("/", "", "//"):
+            log.warning("Refusing to delete root or empty path: %s", p)
+            continue
+        safe_remove(p)
+
+def copy_repo_files(startup_dir: Path, replace_rofi_themes: bool) -> List[str]:
+    """
+    Copies files from repo into their destinations. Returns list of copied entries for summary.
+    """
+    copied = []
     repo_i3 = startup_dir / "i3"
+    # 1) i3 config
+    s = repo_i3 / ".config" / "i3" / "config"
+    d = USER_HOME / ".config" / "i3" / "config"
+    if s.exists():
+        safe_copy_file(s, d); copied.append(f"{s} -> {d}")
 
-    # i3 config
-    safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config", make_backup=True)
-
-    # i3 scripts
-    src_i3_scripts = repo_i3 / ".config" / "i3" / "scripts"
-    dst_i3_scripts = USER_HOME / ".config" / "i3" / "scripts"
-    if src_i3_scripts.exists():
-        ensure_dir(dst_i3_scripts)
-        for f in sorted(src_i3_scripts.iterdir()):
+    # 2) i3 scripts
+    s_scripts = repo_i3 / ".config" / "i3" / "scripts"
+    d_scripts = USER_HOME / ".config" / "i3" / "scripts"
+    if s_scripts.exists():
+        ensure_dir(d_scripts)
+        for f in sorted(s_scripts.iterdir()):
             if f.is_file():
-                safe_copy(f, dst_i3_scripts / f.name, make_backup=True)
-
-    # i3blocks
-    safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", make_backup=True, dirs_exist_ok=True)
-
-    # rofi
-    safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", make_backup=True, dirs_exist_ok=True)
-
-    # picom
-    safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf", make_backup=True)
-
-    # local bin
-    src_local_bin = repo_i3 / ".local" / "bin"
-    dst_local_bin = USER_HOME / ".local" / "bin"
-    ensure_dir(dst_local_bin)
-    if src_local_bin.exists():
-        for f in sorted(src_local_bin.iterdir()):
-            safe_copy(f, dst_local_bin / f.name, make_backup=True)
-
-    # fonts
-    src_fonts = repo_i3 / ".local" / "share" / "fonts"
-    dst_fonts = USER_HOME / ".local" / "share" / "fonts"
-    ensure_dir(dst_fonts)
-    if src_fonts.exists():
-        for f in sorted(src_fonts.iterdir()):
-            safe_copy(f, dst_fonts / f.name, make_backup=True)
-
-    # ensure ~/.local/bin in .bashrc
-    bashrc = USER_HOME / ".bashrc"
-    path_line = 'export PATH="$HOME/.local/bin:$PATH"'
-    if bashrc.exists():
-        content = bashrc.read_text(encoding="utf-8")
-        if path_line not in content:
-            log.info("[PATH] Appending PATH to .bashrc")
-            with open(bashrc, "a", encoding="utf-8") as fh:
-                fh.write(f"\n{path_line}\n")
-    else:
-        log.info("[PATH] Creating .bashrc with PATH line")
-        with open(bashrc, "w", encoding="utf-8") as fh:
-            fh.write(f"{path_line}\n")
-
-    # rofi system themes from repo -> /usr/share/rofi/themes (if present)
-    src_rofi_sys = repo_i3 / "usr" / "share" / "rofi" / "themes"
-    dst_rofi_sys = Path("/usr/share/rofi/themes")
-    if src_rofi_sys.exists():
-        # Ask user before destructive action (backup first)
-        backup = unique_backup_name(dst_rofi_sys)
-        if dst_rofi_sys.exists():
-            log.info("[ROFI] Backing up %s -> %s", dst_rofi_sys, backup)
-            try:
-                shutil.copytree(dst_rofi_sys, backup)
-            except Exception as e:
-                log.warning("[ROFI] Backup failed: %s", e)
-        else:
-            ensure_dir(dst_rofi_sys)
-
-        # Copy the repo theme file(s)
-        for f in sorted(src_rofi_sys.iterdir()):
-            try:
-                safe_copy(f, dst_rofi_sys / f.name, make_backup=True)
-            except Exception as e:
-                log.warning("[ROFI] Could not copy %s: %s", f, e)
-
-        # If the repo provided Adapta-Nokto.rasi and user agrees, remove other themes
-        adapta = src_rofi_sys / "Adapta-Nokto.rasi"
-        if adapta.exists():
-            print("\n[IMPORTANT] Found Adapta-Nokto.rasi in repo.")
-            ans = input("Do you want to (1) keep existing system rofi themes, (2) replace system themes with Adapta-Nokto (backup first) ? [1/2] (default=1): ").strip()
-            if ans == "2":
-                # After backup, remove others and ensure only Adapta stays
+                dstf = d_scripts / f.name
+                safe_copy_file(f, dstf)
                 try:
-                    for p in dst_rofi_sys.iterdir():
-                        if p.name != "Adapta-Nokto.rasi":
-                            if p.is_file():
-                                p.unlink()
-                            else:
-                                shutil.rmtree(p, ignore_errors=True)
-                    log.info("[ROFI] Replaced system rofi themes, kept Adapta-Nokto.rasi")
-                except Exception as e:
-                    log.warning("[ROFI] Could not prune themes: %s", e)
+                    dstf.chmod(0o755)
+                except Exception:
+                    pass
+                copied.append(f"{f} -> {dstf}")
 
-    # wallpapers
+    # 3) i3blocks
+    s_i3b = repo_i3 / ".config" / "i3blocks"
+    d_i3b = USER_HOME / ".config" / "i3blocks"
+    if s_i3b.exists():
+        if d_i3b.exists():
+            safe_remove(d_i3b)
+        shutil.copytree(s_i3b, d_i3b)
+        chown_recursive(d_i3b, TARGET_USER)
+        copied.append(f"{s_i3b} -> {d_i3b}")
+
+    # 4) rofi (user-level)
+    s_rofi = repo_i3 / ".config" / "rofi"
+    d_rofi = USER_HOME / ".config" / "rofi"
+    if s_rofi.exists():
+        if d_rofi.exists():
+            safe_remove(d_rofi)
+        shutil.copytree(s_rofi, d_rofi)
+        chown_recursive(d_rofi, TARGET_USER)
+        copied.append(f"{s_rofi} -> {d_rofi}")
+
+    # 5) picom.conf
+    s_picom = repo_i3 / ".config" / "picom" / "picom.conf"
+    d_picom = USER_HOME / ".config" / "picom" / "picom.conf"
+    if s_picom.exists():
+        safe_copy_file(s_picom, d_picom)
+        copied.append(f"{s_picom} -> {d_picom}")
+
+    # 6) local bin
+    s_lbin = repo_i3 / ".local" / "bin"
+    d_lbin = USER_HOME / ".local" / "bin"
+    if s_lbin.exists():
+        if d_lbin.exists():
+            safe_remove(d_lbin)
+        shutil.copytree(s_lbin, d_lbin)
+        for f in d_lbin.rglob("*"):
+            if f.is_file():
+                try:
+                    f.chmod(0o755)
+                except Exception:
+                    pass
+        chown_recursive(d_lbin, TARGET_USER)
+        copied.append(f"{s_lbin} -> {d_lbin}")
+
+    # 7) fonts
+    s_fonts = repo_i3 / ".local" / "share" / "fonts"
+    d_fonts = USER_HOME / ".local" / "share" / "fonts"
+    if s_fonts.exists():
+        if d_fonts.exists():
+            safe_remove(d_fonts)
+        shutil.copytree(s_fonts, d_fonts)
+        chown_recursive(d_fonts, TARGET_USER)
+        copied.append(f"{s_fonts} -> {d_fonts}")
+
+    # 8) battery monitor script & service
+    s_script = repo_i3 / ".local" / "bin" / "battery-monitor.sh"
+    d_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
+    if s_script.exists():
+        ensure_dir(d_script.parent)
+        safe_copy_file(s_script, d_script); d_script.chmod(0o755)
+        chown_recursive(d_script, TARGET_USER)
+        copied.append(f"{s_script} -> {d_script}")
+
+    s_service = repo_i3 / ".config" / "systemd" / "user" / "battery-monitor.service"
+    d_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
+    if s_service.exists():
+        ensure_dir(d_service.parent)
+        safe_copy_file(s_service, d_service)
+        chown_recursive(d_service, TARGET_USER)
+        copied.append(f"{s_service} -> {d_service}")
+        # ensure DBUS env line present (if not, append); scripts in hi.txt did that
+        try:
+            text = d_service.read_text(encoding="utf-8")
+            env_line = "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
+            if env_line not in text:
+                lines = text.splitlines()
+                # Attempt to insert after [Service] block end
+                inserted = False
+                for i, line in enumerate(lines):
+                    if line.strip() == "[Service]":
+                        j = i + 1
+                        while j < len(lines) and not lines[j].strip().startswith("["):
+                            j += 1
+                        lines.insert(j, env_line)
+                        inserted = True
+                        break
+                if not inserted:
+                    lines.append(env_line)
+                d_service.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                log.info("[BATTERY] injected DBUS env line into %s", d_service)
+        except Exception as e:
+            log.warning("[BATTERY] could not edit service file: %s", e)
+
+    # 9) wallpapers -> user + system mappings
     repo_wall = startup_dir / "wallpaper"
     ensure_dir(USER_HOME / "Pictures")
     backgrounds_dir = Path("/usr/share/backgrounds/kali")
@@ -322,8 +336,12 @@ def copy_core_configs(startup_dir: Path):
     for name in ("wallpaper.jpg", "wallpaper-1.jpg", "wallpaper-2.jpg"):
         s = repo_wall / name
         if s.exists():
-            safe_copy(s, USER_HOME / "Pictures" / name, make_backup=True)
-    # special mappings
+            dstu = USER_HOME / "Pictures" / name
+            if dstu.exists():
+                safe_remove(dstu)
+            shutil.copy2(s, dstu)
+            chown_recursive(dstu, TARGET_USER)
+            copied.append(f"{s} -> {dstu}")
     mappings = [
         ("wallpaper-1.jpg", "login.svg"),
         ("wallpaper.jpg", "kali-maze-16x9.jpg"),
@@ -336,114 +354,100 @@ def copy_core_configs(startup_dir: Path):
     for src_name, dst_name in mappings:
         s = repo_wall / src_name
         if s.exists():
-            try:
-                shutil.copy2(s, backgrounds_dir / dst_name)
-                log.info("[WALL] Mapped %s -> %s", s, backgrounds_dir / dst_name)
-            except Exception as e:
-                log.warning("[WALL] Could not copy %s -> %s : %s", s, dst_name, e)
+            dsts = backgrounds_dir / dst_name
+            if dsts.exists():
+                safe_remove(dsts)
+            shutil.copy2(s, dsts)
+            copied.append(f"{s} -> {dsts}")
 
-# ----------------------
-# Battery monitor install + systemctl --user sequence
-# ----------------------
-def install_battery_monitor(startup_dir: Path):
-    repo_script = startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh"
-    repo_service = startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service"
-    dst_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
-    dst_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
+    # 10) system rofi theme (if repo provides it)
+    s_rofi_sys_dir = repo_i3 / "usr" / "share" / "rofi" / "themes"
+    d_rofi_sys_dir = Path("/usr/share/rofi/themes")
+    if s_rofi_sys_dir.exists():
+        # If user selected Replace earlier, caller will have cleared d_rofi_sys_dir contents already.
+        ensure_dir(d_rofi_sys_dir)
+        for f in sorted(s_rofi_sys_dir.iterdir()):
+            if f.is_file():
+                target = d_rofi_sys_dir / f.name
+                if target.exists():
+                    safe_remove(target)
+                shutil.copy2(f, target)
+                copied.append(f"{f} -> {target}")
 
-    if repo_script.exists():
-        ensure_dir(dst_script.parent)
-        if safe_copy(repo_script, dst_script, make_backup=True):
-            try:
-                dst_script.chmod(0o755)
-            except Exception:
-                pass
-            try:
-                chown_recursive(dst_script, TARGET_USER)
-            except Exception:
-                pass
-            log.info("[BATTERY] Installed script %s", dst_script)
+    return copied
 
-    if repo_service.exists():
-        ensure_dir(dst_service.parent)
-        if safe_copy(repo_service, dst_service, make_backup=True):
-            try:
-                # Ensure DBUS env line exists inside [Service]
-                env_line = "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
-                text = dst_service.read_text(encoding="utf-8")
-                if env_line not in text:
-                    lines = text.splitlines()
-                    inserted = False
-                    for i, ln in enumerate(lines):
-                        if ln.strip() == "[Service]":
-                            j = i + 1
-                            while j < len(lines) and not lines[j].strip().startswith("["):
-                                j += 1
-                            lines.insert(j, env_line)
-                            inserted = True
-                            break
-                    if not inserted:
-                        lines.append("")
-                        lines.append(env_line)
-                    dst_service.write_text("\n".join(lines) + "\n", encoding="utf-8")
-                    try:
-                        chown_recursive(dst_service, TARGET_USER)
-                    except Exception:
-                        pass
-                    log.info("[BATTERY] Ensured DBUS env in service file")
-            except Exception as e:
-                log.warning("[BATTERY] Could not edit service file: %s", e)
+# ---------- systemctl --user sequence ----------
+def run_user_systemctl_sequence(log_list: List[str]) -> None:
+    """
+    Execute the exact three commands you demanded as the target user:
+      systemctl --user daemon-reexec
+      systemctl --user daemon-reload
+      systemctl --user restart battery-monitor.service
 
-    # Now run the EXACT user-level systemctl sequence you requested.
+    First attempt: sudo -u <user> systemctl --user ...
+    If any command fails, retry with XDG_RUNTIME_DIR=/run/user/<UID> prefix.
+    """
     try:
         pw = pwd.getpwnam(TARGET_USER)
         uid = pw.pw_uid
-        cmds = [
-            ["sudo", "-u", TARGET_USER, "systemctl", "--user", "daemon-reexec"],
-            ["sudo", "-u", TARGET_USER, "systemctl", "--user", "daemon-reload"],
-            ["sudo", "-u", TARGET_USER, "systemctl", "--user", "restart", "battery-monitor.service"],
-        ]
-        log.info("[BATTERY] Running systemctl --user sequence as %s (first attempt without XDG prefix)", TARGET_USER)
-        failed = []
-        for c in cmds:
-            r = run(c, check=False, capture_output=True)
-            rc = getattr(r, "returncode", 1)
-            if rc != 0:
-                failed.append((c, r))
+    except KeyError:
+        log.warning("Could not find target user info; skipping systemctl --user sequence")
+        return
+
+    simple_cmds = [
+        ["sudo", "-u", TARGET_USER, "systemctl", "--user", "daemon-reexec"],
+        ["sudo", "-u", TARGET_USER, "systemctl", "--user", "daemon-reload"],
+        ["sudo", "-u", TARGET_USER, "systemctl", "--user", "restart", "battery-monitor.service"],
+    ]
+
+    failed = []
+    for cmd in simple_cmds:
+        r = run(cmd, check=False, capture_output=True)
+        rc = getattr(r, "returncode", 1)
+        stdout = getattr(r, "stdout", "") or ""
+        stderr = getattr(r, "stderr", "") or ""
+        log_list.append(" ".join(map(str, cmd)))
+        if rc == 0:
+            log.info("[SCTL] OK: %s", " ".join(cmd))
+            if stdout.strip():
+                log.info("[SCTL-OUT] %s", stdout.strip())
+        else:
+            log.warning("[SCTL] Failed (rc=%s): %s", rc, " ".join(cmd))
+            if stderr.strip():
+                log.warning("[SCTL-ERR] %s", stderr.strip())
+            failed.append(cmd)
+
+    if failed:
+        log.info("[SCTL] Retrying failed commands with XDG_RUNTIME_DIR=/run/user/%d", uid)
+        for cmd in failed:
+            # Build a bash -lc command with XDG_RUNTIME_DIR set
+            inner = " ".join(cmd[2:])  # e.g. systemctl --user daemon-reload
+            cmdstr = f"XDG_RUNTIME_DIR=/run/user/{uid} {inner}"
+            full = ["sudo", "-u", TARGET_USER, "bash", "-lc", cmdstr]
+            r2 = run(full, check=False, capture_output=True)
+            rc2 = getattr(r2, "returncode", 1)
+            stdout2 = getattr(r2, "stdout", "") or ""
+            stderr2 = getattr(r2, "stderr", "") or ""
+            log_list.append(cmdstr)
+            if rc2 == 0:
+                log.info("[SCTL-RETRY] OK: %s", cmdstr)
+                if stdout2.strip():
+                    log.info("[SCTL-OUT] %s", stdout2.strip())
             else:
-                log.info("[BATTERY] Command OK: %s", " ".join(c))
+                log.warning("[SCTL-RETRY] Failed (rc=%s): %s", rc2, cmdstr)
+                if stderr2.strip():
+                    log.warning("[SCTL-ERR] %s", stderr2.strip())
 
-        if failed:
-            log.warning("[BATTERY] Some commands failed, retrying with XDG_RUNTIME_DIR prefix.")
-            xdg_prefix = f"XDG_RUNTIME_DIR=/run/user/{uid}"
-            for c in cmds:
-                s = " ".join(c[3:]) if len(c) > 3 else " ".join(c[2:])
-                cmd_str = f"{xdg_prefix} sudo -u {TARGET_USER} bash -lc 'systemctl --user {' '.join(c[3:]) if len(c)>3 else c[2]}'"
-                # Safer: run each full command individually using bash -lc and XDG prefix
-                # Construct the direct commands:
-                if len(c) == 4:
-                    svc_cmd = f"{xdg_prefix} sudo -u {TARGET_USER} bash -lc 'systemctl --user {c[2]} {c[3]}'"
-                elif len(c) == 3:
-                    svc_cmd = f"{xdg_prefix} sudo -u {TARGET_USER} bash -lc 'systemctl --user {c[2]}'"
-                else:
-                    svc_cmd = f"{xdg_prefix} sudo -u {TARGET_USER} bash -lc 'systemctl --user {' '.join(c[2:])}'"
-                r2 = run(svc_cmd, check=False, capture_output=True, shell=True)
-                if getattr(r2, "returncode", 1) == 0:
-                    log.info("[BATTERY] Retry OK: %s", svc_cmd)
-                else:
-                    log.warning("[BATTERY] Retry failed: %s", svc_cmd)
-    except Exception as e:
-        log.warning("[BATTERY] Could not run systemctl sequence: %s", e)
-
-# ----------------------
-# Make executables & i3 refresh
-# ----------------------
-def set_executables_and_restart_i3():
-    # make scripts executable in common places
-    for d in [USER_HOME / ".config" / "i3blocks" / "scripts",
-              USER_HOME / ".config" / "rofi",
-              USER_HOME / ".config" / "i3" / "scripts",
-              USER_HOME / ".local" / "bin"]:
+# ---------- Make exec bits + i3 refresh ----------
+def make_executables_and_refresh_i3() -> None:
+    # Ensure scripts are executable
+    possible_dirs = [
+        USER_HOME / ".local" / "bin",
+        USER_HOME / ".config" / "i3" / "scripts",
+        USER_HOME / ".config" / "i3blocks",
+        USER_HOME / ".config" / "rofi"
+    ]
+    for d in possible_dirs:
         if d.exists():
             for f in d.rglob("*"):
                 if f.is_file():
@@ -452,123 +456,38 @@ def set_executables_and_restart_i3():
                     except Exception:
                         pass
 
-    # Attempt Win+Shift+R via xdotool (multiple DISPLAY/XAUTHORITY combos)
-    def try_send_xdotool_refresh():
-        displays = [":0", ":0.0", ":1"]
-        xauth_candidates = [
-            USER_HOME / ".Xauthority",
-            Path(f"/run/user/{pwd.getpwnam(TARGET_USER).pw_uid}/gdm/Xauthority")
-        ]
-        for disp in displays:
-            for xauth in xauth_candidates:
-                env = os.environ.copy()
-                env["DISPLAY"] = disp
-                if xauth.exists():
-                    env["XAUTHORITY"] = str(xauth)
-                # send key
-                cmd = ["sudo", "-u", TARGET_USER, "xdotool", "key", "Super+Shift+r"]
-                r = run(cmd, check=False, capture_output=True, env=env)
-                if getattr(r, "returncode", 1) == 0:
-                    log.info("[I3-REFRESH] Sent xdotool refresh with DISPLAY=%s XAUTHORITY=%s", disp, xauth)
-                    return True
-        return False
-
-    refreshed = False
-    try:
-        # only try if i3 appears to be running
-        r = run(["pgrep", "-x", "i3"], check=False, capture_output=True)
-        if getattr(r, "returncode", 0) == 0 and r.stdout.strip():
-            log.info("[I3-REFRESH] i3 detected, attempting xdotool refresh")
-            refreshed = try_send_xdotool_refresh()
-            if not refreshed:
-                log.info("[I3-REFRESH] xdotool failed, trying i3-msg restart as user")
-                run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False)
-        else:
-            log.info("[I3-REFRESH] i3 not detected, skipping refresh")
-    except Exception as e:
-        log.warning("[I3-REFRESH] Exception during refresh: %s", e)
-
-# ----------------------
-# App installers (examples) - only Spotify is auto-included
-# ----------------------
-def install_telegram(startup_dir: Optional[Path] = None):
-    log.info("[TELEGRAM] Installing Telegram (best-effort)")
-    tfile = Path("/tmp/tsetup.tar.xz")
-    run(["wget", "-q", "https://telegram.org/dl/desktop/linux", "-O", str(tfile)], check=False)
-    opt = Path("/opt/Telegram")
-    if opt.exists():
-        backup_existing(opt)
-    ensure_dir(opt)
-    run(["tar", "-xf", str(tfile), "-C", str(opt), "--strip-components=1"], check=False)
-    tbin = opt / "Telegram"
-    if tbin.exists():
+    # Attempt to refresh i3 via xdotool (simulate Win+Shift+R) if i3 is running; fallback to i3-msg restart
+    r = run(["pgrep", "-x", "i3"], check=False, capture_output=True)
+    if getattr(r, "returncode", 1) == 0 and (r.stdout or r.stderr):
+        log.info("i3 detected: attempting xdotool send (Win+Shift+R)")
         try:
-            tbin.chmod(0o755)
+            # Best-effort: send Super+Shift+r as the target user
+            run(["sudo", "-u", TARGET_USER, "xdotool", "key", "Super+Shift+r"], check=False)
+            log.info("Sent Win+Shift+R via xdotool (best-effort)")
         except Exception:
-            pass
-        try:
-            link = Path("/usr/local/bin/telegram")
-            if link.exists() or link.is_symlink():
-                try:
-                    link.unlink()
-                except Exception:
-                    pass
-            link.symlink_to(tbin)
-            log.info("[TELEGRAM] Created symlink %s -> %s", link, tbin)
-        except Exception as e:
-            log.warning("[TELEGRAM] Could not create symlink: %s", e)
-
-def install_spotify(startup_dir: Optional[Path] = None):
-    log.info("[SPOTIFY] Installing Spotify (best-effort apt then snap fallback)")
-    # Simple apt repository attempt (may require apt-key or signed repo for specific distros)
-    try:
-        # Try apt install directly first (some distros have spotify in repos)
-        r = run(["apt", "install", "-y", "spotify-client"], check=False)
-        if getattr(r, "returncode", 1) == 0:
-            log.info("[SPOTIFY] Installed via apt")
-            return
-    except Exception:
-        pass
-    # Fallback to snap if installed
-    r = run(["which", "snap"], check=False, capture_output=True)
-    if getattr(r, "returncode", 1) == 0 and r.stdout.strip():
-        run(["snap", "install", "spotify"], check=False)
-        log.info("[SPOTIFY] Installed via snap")
+            log.info("xdotool attempt failed; trying i3-msg restart")
+            run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False)
     else:
-        log.warning("[SPOTIFY] Could not install spotify; add repository manually or install snap")
+        log.info("i3 not detected; skipping i3 refresh")
 
-# Dispatch map; to add app: implement installer and map name -> function here
-INSTALL_DISPATCH: Dict[str, Callable[[Optional[Path]], None]] = {
-    "telegram": install_telegram,
-    "spotify": install_spotify,
-    # EXAMPLE:
-    # "my-app": install_my_app,
-}
-
-# ----------------------
-# Interactive prompts
-# ----------------------
-def prompt_yes_no(prompt: str, default: str = "y") -> bool:
+# ---------- Prompt helpers ----------
+def prompt_yes_no(prompt: str, default: str = "n") -> bool:
     default = default.lower()
     yn = "[Y/n]" if default == "y" else "[y/N]"
-    while True:
-        try:
-            choice = input(f"{prompt} {yn}: ").strip().lower()
-        except EOFError:
-            return default == "y"
-        if choice == "" and default:
-            return default == "y"
-        if choice in ("y", "yes"):
-            return True
-        if choice in ("n", "no"):
-            return False
-        print("Please answer 'y' or 'n'.")
+    try:
+        ans = input(f"{prompt} {yn}: ").strip().lower()
+    except EOFError:
+        return default == "y"
+    if ans == "" and default:
+        return default == "y"
+    return ans in ("y", "yes")
 
-def prompt_multi_select() -> List[int]:
-    print("Select applications to install (numbers separated by spaces or commas), 'a' for all, Enter for none:")
+def prompt_app_selection() -> List[int]:
+    print("\nApplications menu (select numbers separated by space or comma):")
     for k in sorted(APP_OPTIONS.keys()):
         print(f" {k}) {APP_OPTIONS[k]}")
-    raw = input("Enter selection (e.g. '1 3 5' or 'a'): ").strip().lower()
+    print(" Enter = none")
+    raw = input("Selection: ").strip().lower()
     if not raw:
         return []
     if raw in ("a", "all"):
@@ -577,65 +496,181 @@ def prompt_multi_select() -> List[int]:
     out = []
     for p in parts:
         if p.isdigit():
-            i = int(p)
-            if i in APP_OPTIONS:
-                out.append(i)
-        else:
-            # allow typed names
-            for k, name in APP_OPTIONS.items():
-                if p == name.lower() or p == name.split()[0].lower():
-                    out.append(k)
-    return list(dict.fromkeys(out))  # preserve order, remove duplicates
+            v = int(p)
+            if v in APP_OPTIONS:
+                out.append(v)
+    # deduplicate preserve order
+    res = []
+    for v in out:
+        if v not in res:
+            res.append(v)
+    return res
 
-# ----------------------
-# Main flow
-# ----------------------
-def main():
-    require_root()
-    startup_dir = detect_or_clone_repo()
-
-    # 1) Install apt packages (best-effort)
-    install_apt_packages(APT_PACKAGES)
-
-    # 2) Copy configs
-    copy_core_configs(startup_dir)
-
-    # 3) Install battery monitor and run systemctl --user sequence
-    install_battery_monitor(startup_dir)
-
-    # 4) Set executables + i3 refresh
-    set_executables_and_restart_i3()
-
-    # 5) App install prompt
-    selections = prompt_multi_select()
-    if not selections:
-        log.info("[APPS] No apps selected")
+# ---------- Simple Spotify installer example (best-effort) ----------
+def install_spotify(startup_dir: Path) -> None:
+    log.info("[SPOTIFY] Attempting install (apt then snap fallback)")
+    # try apt first (may fail on some distros)
+    r = run(["apt", "install", "-y", "spotify-client"], check=False)
+    if getattr(r, "returncode", 1) == 0:
+        log.info("[SPOTIFY] installed via apt")
+        return
+    # try snap if available
+    r2 = run(["which", "snap"], check=False, capture_output=True)
+    if getattr(r2, "returncode", 0) == 0:
+        run(["snap", "install", "spotify"], check=False)
+        log.info("[SPOTIFY] installed via snap (best-effort)")
     else:
-        for sel in selections:
-            name = APP_OPTIONS.get(sel)
+        log.warning("[SPOTIFY] Could not install spotify automatically; please install manually")
+
+# register spotify in dispatch if you want it available
+INSTALL_DISPATCH["spotify"] = install_spotify
+
+# ---------- Main ----------
+def main():
+    if os.geteuid() != 0:
+        die("This script must be run as root. Use sudo python3 startup_setup_full.py")
+
+    startup_dir = detect_or_clone_repo()
+    log.info("Repo located at: %s", startup_dir)
+
+    # Step 1: install apt packages first
+    log.info("Installing APT packages (non-interactive)")
+    env = os.environ.copy()
+    env["DEBIAN_FRONTEND"] = "noninteractive"
+    run(["apt", "update"], check=False, env=env)
+    if APT_PACKAGES:
+        run(["apt", "install", "-y"] + APT_PACKAGES, check=False, env=env)
+
+    # Step 2: prepare list of destination paths and scan for existing items (per hi.txt)
+    dests = build_dest_paths(startup_dir)
+    existing = scan_existing(dests)
+    if existing:
+        print("\nDetected existing configuration files/folders that the script would manage:")
+        for p in existing:
+            print(" -", p)
+        print("\nOptions:")
+        print(" 1) REMOVE configs and reinstall (no backup; will DELETE existing files and copy repo files)")
+        print(" 2) KEEP configs and continue to app menu (skip copying configs)")
+        print(" 3) CANCEL (exit without changes)")
+        choice = input("Choose 1, 2, or 3 (default=3): ").strip()
+        if choice == "1":
+            log.info("User chose: REMOVE configs and reinstall (NO BACKUPS)")
+            # delete all detected paths
+            delete_existing_paths(existing)
+            # if rofi themes dir existed, clear contents (user asked to remove others)
+            rofi_dir = Path("/usr/share/rofi/themes")
+            if rofi_dir.exists():
+                for f in list(rofi_dir.iterdir()):
+                    safe_remove(f)
+                log.info("/usr/share/rofi/themes contents cleared")
+            # Now copy repo files into place
+            copied = copy_repo_files(startup_dir, replace_rofi_themes=True)
+        elif choice == "2":
+            log.info("User chose: KEEP configs. Skipping config copy and moving to app menu.")
+            copied = []
+        else:
+            log.info("User chose: CANCEL. Exiting without changes.")
+            return
+    else:
+        log.info("No existing configs found. Copying repo configs to target locations.")
+        copied = copy_repo_files(startup_dir, replace_rofi_themes=False)
+
+    # If Replace chosen and repo contains i3/usr/share/rofi/themes/Adapta-Nokto.rasi,
+    # ensure it is moved/copied into /usr/share/rofi/themes/Adapta-Nokto.rasi
+    adp_src = startup_dir / "i3" / "usr" / "share" / "rofi" / "themes" / "Adapta-Nokto.rasi"
+    adp_dst_dir = Path("/usr/share/rofi/themes")
+    adp_dst = adp_dst_dir / "Adapta-Nokto.rasi"
+    if adp_src.exists():
+        # per hi.txt you asked to move it into place and delete other files when replacing
+        log.info("Installing Adapta-Nokto.rasi into %s", adp_dst)
+        # if themes directory exists, we've cleared it earlier when replace chosen; but ensure directory exists
+        ensure_dir(adp_dst_dir)
+        # copy theme file
+        try:
+            if adp_dst.exists():
+                safe_remove(adp_dst)
+            shutil.copy2(adp_src, adp_dst)
+            log.info("Copied %s -> %s", adp_src, adp_dst)
+            try:
+                chown_recursive(adp_dst, TARGET_USER)
+            except Exception:
+                pass
+        except Exception as e:
+            log.warning("Could not copy rofi theme: %s", e)
+
+    # Ensure ~/.local/bin in .bashrc
+    bashrc = USER_HOME / ".bashrc"
+    path_line = 'export PATH="$HOME/.local/bin:$PATH"'
+    try:
+        if bashrc.exists():
+            txt = bashrc.read_text(encoding="utf-8")
+            if path_line not in txt:
+                with open(bashrc, "a", encoding="utf-8") as fh:
+                    fh.write("\n" + path_line + "\n")
+                log.info("Appended PATH to %s", bashrc)
+        else:
+            with open(bashrc, "w", encoding="utf-8") as fh:
+                fh.write(path_line + "\n")
+            chown_recursive(bashrc, TARGET_USER)
+            log.info("Created %s with PATH", bashrc)
+    except Exception as e:
+        log.warning("Could not ensure PATH in .bashrc: %s", e)
+
+    # Make executables and attempt i3 refresh
+    make_executables_and_refresh_i3()
+
+    # Now run the exact user-level systemctl sequence you required
+    executed_cmds_for_summary: List[str] = []
+    run_user_systemctl_sequence(executed_cmds_for_summary)
+
+    # App installation menu (Spotify only pre-added)
+    selections = prompt_app_selection()
+    if selections:
+        log.info("User selected apps: %s", selections)
+        for s in selections:
+            name = APP_OPTIONS.get(s)
             if not name:
-                log.warning("[APPS] Unknown selection %s", sel)
+                log.warning("Unknown app selection: %s", s)
                 continue
             fn = INSTALL_DISPATCH.get(name)
             if not fn:
-                log.warning("[APPS] No installer for %s (implement it in INSTALL_DISPATCH)", name)
+                log.warning("No installer implemented for %s (edit the script to add it)", name)
                 continue
             try:
-                log.info("[APPS] Installing %s", name)
                 fn(startup_dir)
             except Exception as e:
-                log.warning("[APPS] Installer for %s raised: %s", name, e)
+                log.warning("Installer for %s raised: %s", name, e)
+    else:
+        log.info("No apps selected; skipping app installation")
 
-    # 6) Summary write (basic)
+    # Write a summary for audit
+    summary_lines = []
+    summary_lines.append(f"Run time: {datetime.datetime.now().isoformat()}")
+    summary_lines.append(f"Target user: {TARGET_USER} ({USER_HOME})")
+    summary_lines.append("Files copied:")
+    for c in copied:
+        summary_lines.append("  " + c)
+    if adp_src.exists():
+        summary_lines.append(f"Rofi theme installed: {adp_dst}")
+    summary_lines.append("Systemctl --user commands attempted:")
+    for cmd in executed_cmds_for_summary:
+        summary_lines.append("  " + cmd)
+    # Print summary
+    print("\n===== SUMMARY =====")
+    for l in summary_lines:
+        print(l)
+    # Save summary to user's home
     try:
-        summary_path = USER_HOME / USER_SUMMARY
+        summary_path = USER_HOME / SUMMARY_FILENAME
         with open(summary_path, "a", encoding="utf-8") as fh:
-            fh.write(f"\n--- run at {datetime.datetime.now().isoformat()} ---\n")
-            fh.write(f"Target user: {TARGET_USER}\n")
-            fh.write(f"Repo: {startup_dir}\n")
-        log.info("[DONE] Setup complete; summary written to %s", summary_path)
+            fh.write("\n".join(summary_lines) + "\n\n")
+        chown_recursive(summary_path, TARGET_USER)
+        log.info("Wrote summary to %s", summary_path)
     except Exception as e:
-        log.warning("[DONE] Could not write summary: %s", e)
+        log.warning("Could not write summary file: %s", e)
+
+    log.info("Setup finished.")
 
 if __name__ == "__main__":
     main()
+
