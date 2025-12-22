@@ -67,7 +67,7 @@ while true; do
     # Unplug detection
     if [[ "$status" == "Discharging" ]]; then
         if [[ "$last_status" != "Discharging" ]]; then
-            notify "Battery unplugged" "Battery: ${capacity}% — watching thresholds: ${THRESHOLDS[*]}"
+            notify "Battery unplugged" "Battery: ${capacity}%"
         fi
 
         # Check thresholds
@@ -85,7 +85,7 @@ while true; do
     else
         # Plugged in detection
         if [[ "$last_status" == "Discharging" ]] || [[ "$last_status" == "" ]]; then
-            notify "Power connected" "Battery: ${capacity}% — charging or full"
+            notify "Power connected" "Battery: ${capacity}%"
             clear_notified
         fi
     fi
