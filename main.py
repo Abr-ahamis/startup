@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 """
-startup_setup_full.py  (updated)
+startup_setup_full.py  (FULL FIX - integrated)
 
-Changes in this version:
- - Removed the GNOME Terminal profile snippet completely.
- - Removed the "Do you want to apply GRUB theme?" confirmation.
- - After restarting i3, the script waits until i3 responds (i3-msg get_version)
-   and only then continues to the interactive installation menu.
- - Still runs the user-level systemctl sequence for battery-monitor.service.
- - Spotify remains the only added app. It's easy to add more apps (see comments).
+Summary of behavior:
+ - Detects or clones the "startup" repo.
+ - Installs core APT packages non-interactively.
+ - Backs up existing configs and copies repo configs into the user's home.
+ - Ensures ~/.local/bin exists and is added to PATH in .bashrc.
+ - Installs battery-monitor script + user service and runs the exact:
+       XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user daemon-reexec
+       XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user daemon-reload
+       XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user restart battery-monitor.service
+   as the target non-root user (best-effort).
+ - Makes scripts executable.
+ - Refreshes i3 the same way as pressing Win+Shift+R using xdotool (tries multiple DISPLAY/XAUTHORITY combos),
+   falls back to i3-msg restart if needed, then waits for i3 to respond before continuing.
+ - Does NOT apply any GNOME Terminal theming.
+ - Does NOT prompt for GRUB theme (apply_grub_theme exists but is not called automatically).
+ - Interactive install menu includes Spotify only as the added app (easy to extend).
+ - Provides USER_COMMANDS area for adding arbitrary commands to run (documented inline).
 
-Usage:
+Run:
   sudo python3 startup_setup_full.py
 """
 from __future__ import annotations
@@ -40,7 +50,7 @@ APT_PACKAGES = [
 ]
 
 # ----------------------
-# APP MENU - only add apps here (Spotify only)
+# APP MENU - only add apps here (Spotify only added per your request)
 # ----------------------
 # To add more apps:
 #  1) add an entry here (e.g. 8: "myapp")
@@ -63,7 +73,7 @@ logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 log = logging.getLogger("startup_setup")
 
 # ----------------------
-# Basic helpers
+# Utilities & environment detection
 # ----------------------
 def get_target_user() -> str:
     sudo_user = os.environ.get("SUDO_USER")
@@ -87,8 +97,12 @@ def die(msg: str, code: int = 1):
 
 def run(cmd, check: bool = False, capture_output: bool = False, env: Optional[dict] = None, shell: bool = False):
     """
-    Wrapper around subprocess.run that logs commands.
-    Accepts list or string. Returns CompletedProcess or exception-like result.
+    Wrapper around subprocess.run:
+      - cmd: list or string
+      - check: if True, raise CalledProcessError on non-zero exit
+      - capture_output: capture stdout/stderr
+      - env: additional env vars
+      - shell: if True, run via shell
     """
     if isinstance(cmd, (list, tuple)):
         log.info(f"[CMD] {' '.join(map(str, cmd))}")
@@ -241,7 +255,7 @@ def copy_core_configs(startup_dir: Path):
     # i3 config file
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config", make_backup=True)
 
-    # i3 scripts
+    # i3 scripts directory
     src_i3_scripts = repo_i3 / ".config" / "i3" / "scripts"
     dst_i3_scripts = USER_HOME / ".config" / "i3" / "scripts"
     if src_i3_scripts.exists() and src_i3_scripts.is_dir():
@@ -249,8 +263,10 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_i3_scripts.iterdir()):
             if f.is_file():
                 safe_copy(f, dst_i3_scripts / f.name, make_backup=True)
+    else:
+        log.info(f"[COPY] No i3 scripts directory found in repo at {src_i3_scripts}; skipping.")
 
-    # i3blocks, rofi, picom
+    # other configs
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", make_backup=True, dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", make_backup=True, dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf", make_backup=True)
@@ -271,7 +287,7 @@ def copy_core_configs(startup_dir: Path):
         for f in sorted(src_fonts.iterdir()):
             safe_copy(f, dst_fonts / f.name, make_backup=True)
 
-    # ensure ~/.local/bin in .bashrc
+    # Ensure ~/.local/bin is present and add to .bashrc if missing
     bashrc = USER_HOME / ".bashrc"
     path_line = 'export PATH="$HOME/.local/bin:$PATH"'
     if bashrc.exists():
@@ -307,12 +323,18 @@ def copy_core_configs(startup_dir: Path):
 # Install battery monitor (script + systemd --user service)
 # ----------------------
 def install_battery_monitor(startup_dir: Path):
+    """
+    Install battery-monitor script and user systemd service from the repo into the
+    target user's home and attempt to enable & start the service using systemctl --user
+    sequence as the target user with XDG_RUNTIME_DIR set.
+    """
     repo_script = startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh"
     repo_service = startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service"
 
     dst_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
     dst_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
 
+    # Copy script
     if repo_script.exists():
         ensure_dir(dst_script.parent)
         if safe_copy(repo_script, dst_script, make_backup=True):
@@ -328,6 +350,7 @@ def install_battery_monitor(startup_dir: Path):
     else:
         log.info("[BATTERY] No battery-monitor script found in repo (%s). Skipping script install.", repo_script)
 
+    # Copy user service
     if repo_service.exists():
         ensure_dir(dst_service.parent)
         if safe_copy(repo_service, dst_service, make_backup=True):
@@ -337,7 +360,7 @@ def install_battery_monitor(startup_dir: Path):
                 pass
             log.info("[BATTERY] Installed battery-monitor user service to %s", dst_service)
 
-            # ensure DBUS env line in service
+            # Ensure DBUS environment line is present in the [Service] section
             try:
                 env_line = "Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus"
                 text = dst_service.read_text(encoding="utf-8")
@@ -371,25 +394,24 @@ def install_battery_monitor(startup_dir: Path):
     else:
         log.info("[BATTERY] No battery-monitor.service found in repo (%s). Skipping service install.", repo_service)
 
-    # Execute the exact user-level systemctl sequence you requested (as target user)
+    # Now attempt to run the exact command sequence as the target user:
     try:
         pw = pwd.getpwnam(TARGET_USER)
         uid = pw.pw_uid
         runtime_dir = Path(f"/run/user/{uid}")
         if not runtime_dir.exists():
             log.warning("[BATTERY] /run/user/%d does not exist. The target user may not have an active login session; systemctl --user may fail.", uid)
-
-        systemctl_cmds = [
+        cmds = [
             f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reexec",
             f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload",
             f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user restart battery-monitor.service",
         ]
-        log.info("[BATTERY] Running systemctl --user sequence as %s", TARGET_USER)
-        for cmd in systemctl_cmds:
+        log.info("[BATTERY] Running systemctl --user commands as user %s", TARGET_USER)
+        for cmd in cmds:
             r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd], check=False, capture_output=True)
             rc = getattr(r, "returncode", 1)
-            stdout = getattr(r, "stdout", "")
-            stderr = getattr(r, "stderr", "")
+            stdout = getattr(r, "stdout", "") or ""
+            stderr = getattr(r, "stderr", "") or ""
             if rc == 0:
                 log.info("[BATTERY] Command succeeded: %s", cmd)
                 if stdout:
@@ -403,13 +425,132 @@ def install_battery_monitor(startup_dir: Path):
         log.info("[BATTERY] systemctl --user sequence attempted.")
     except Exception as e:
         log.warning(f"[BATTERY] Failed to run systemctl --user commands: {e}")
-        log.warning("[BATTERY] The service is installed but may require manual enable/start by the user.")
+        log.warning("[BATTERY] The service is installed but may need manual enable/start by the user.")
 
 
 # ----------------------
-# Make scripts executable and restart i3 (as the user)
+# i3 detection & refresh helpers
+# ----------------------
+def is_user_running_i3() -> bool:
+    """
+    Return True if the target user appears to be running i3.
+    Strategy:
+      1) Try `pgrep -u <uid> -x i3` (fast, reliable)
+      2) Fallback: run `i3-msg -t get_version` as the user with XDG_RUNTIME_DIR set.
+    If both checks fail, return False.
+    """
+    try:
+        pw = pwd.getpwnam(TARGET_USER)
+        uid = pw.pw_uid
+    except Exception:
+        log.warning("[I3-CHECK] Could not look up user %s", TARGET_USER)
+        return False
+
+    # 1) pgrep check
+    try:
+        r = run(["pgrep", "-u", str(uid), "-x", "i3"], check=False, capture_output=True)
+        if getattr(r, "returncode", 1) == 0:
+            log.info("[I3-CHECK] Found i3 process for user %s (pgrep).", TARGET_USER)
+            return True
+    except Exception:
+        pass
+
+    # 2) Fallback: try i3-msg get_version as the user with XDG_RUNTIME_DIR set
+    try:
+        cmd = f'XDG_RUNTIME_DIR=/run/user/{uid} i3-msg -t get_version'
+        r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd], check=False, capture_output=True)
+        rc = getattr(r, "returncode", 1)
+        out = (getattr(r, "stdout", "") or "").strip()
+        if rc == 0 and out:
+            log.info("[I3-CHECK] i3 responded to i3-msg for user %s.", TARGET_USER)
+            return True
+    except Exception:
+        pass
+
+    log.info("[I3-CHECK] No i3 session detected for user %s; skipping i3 refresh.", TARGET_USER)
+    return False
+
+
+def try_send_xdotool_refresh(timeout: int = 5) -> bool:
+    """
+    Attempt to simulate Win+Shift+R in the user's X session using xdotool.
+    Returns True if xdotool command ran successfully.
+    Tries common DISPLAY values and the user's XAUTHORITY file.
+    """
+    displays = [":0", ":0.0", ":1"]
+    xauth_candidates = [
+        str(USER_HOME / ".Xauthority"),
+        f"/run/user/{pwd.getpwnam(TARGET_USER).pw_uid}/gdm/Xauthority" if Path(f"/run/user/{pwd.getpwnam(TARGET_USER).pw_uid}/gdm").exists() else "",
+    ]
+    # xdotool combo: Super (Win) + Shift + r
+    key_cmd = "xdotool keydown Super keydown Shift key r keyup Shift keyup Super"
+
+    for disp in displays:
+        for xauth in [p for p in xauth_candidates if p]:
+            wrapper = f'export DISPLAY="{disp}" && export XAUTHORITY="{xauth}" && {key_cmd}'
+            cmd = ["sudo", "-u", TARGET_USER, "bash", "-lc", wrapper]
+            log.info("[I3-REFRESH] Trying xdotool on DISPLAY=%s XAUTHORITY=%s", disp, xauth)
+            r = run(cmd, check=False, capture_output=True)
+            rc = getattr(r, "returncode", 1)
+            stdout = getattr(r, "stdout", "") or ""
+            stderr = getattr(r, "stderr", "") or ""
+            if rc == 0:
+                log.info("[I3-REFRESH] xdotool reported success on %s (stdout: %s)", disp, stdout.strip())
+                return True
+            else:
+                log.debug("[I3-REFRESH] xdotool failed on %s (rc=%s). stdout=%s stderr=%s", disp, rc, stdout.strip(), stderr.strip())
+
+    # try without explicit XAUTHORITY (some setups use DISPLAY only)
+    for disp in displays:
+        wrapper = f'export DISPLAY="{disp}" && {key_cmd}'
+        cmd = ["sudo", "-u", TARGET_USER, "bash", "-lc", wrapper]
+        log.info("[I3-REFRESH] Trying xdotool on DISPLAY=%s (no XAUTHORITY)", disp)
+        r = run(cmd, check=False, capture_output=True)
+        rc = getattr(r, "returncode", 1)
+        stdout = getattr(r, "stdout", "") or ""
+        stderr = getattr(r, "stderr", "") or ""
+        if rc == 0:
+            log.info("[I3-REFRESH] xdotool reported success on %s (stdout: %s)", disp, stdout.strip())
+            return True
+        else:
+            log.debug("[I3-REFRESH] xdotool failed on %s (rc=%s). stdout=%s stderr=%s", disp, rc, stdout.strip(), stderr.strip())
+
+    log.warning("[I3-REFRESH] xdotool refresh attempts failed (xdotool may be missing or no X session found).")
+    return False
+
+
+def wait_for_i3_ready(timeout: int = 20) -> bool:
+    """
+    Poll i3 (as target user) until it responds to `i3-msg -t get_version`.
+    Returns True if i3 responded within timeout seconds, False otherwise.
+    """
+    log.info("[I3-WAIT] Waiting for i3 to be ready (timeout %ds)...", timeout)
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", "i3-msg -t get_version"], check=False, capture_output=True)
+            rc = getattr(r, "returncode", 1)
+            out = (getattr(r, "stdout", "") or "").strip()
+            if rc == 0 and out:
+                log.info("[I3-WAIT] i3 responded: %s", out.splitlines()[0] if out else "<empty>")
+                return True
+        except Exception:
+            pass
+        time.sleep(1)
+    log.warning("[I3-WAIT] i3 did not respond within %d seconds.", timeout)
+    return False
+
+
+# ----------------------
+# Make scripts executable and refresh i3 (Win+Shift+R or fallback)
 # ----------------------
 def set_executables_and_restart_i3():
+    """
+    Make user scripts executable, then attempt to refresh i3 via xdotool (Win+Shift+R)
+    only if the target user is actually running i3. Otherwise skip refresh cleanly.
+    Falls back to i3-msg restart if xdotool fails.
+    """
+    # Ensure scripts are executable (i3blocks, rofi, i3 scripts, local bin)
     scripts_dir = USER_HOME / ".config" / "i3blocks" / "scripts"
     if scripts_dir.exists():
         for sh in scripts_dir.glob("*.sh"):
@@ -447,37 +588,40 @@ def set_executables_and_restart_i3():
                 except Exception:
                     pass
 
-    # attempt i3 restart as the target user
+    # Only attempt refresh if i3 is running for the user
+    if not is_user_running_i3():
+        log.info("[I3-REFRESH] Target user does not appear to be running i3; skipping refresh step.")
+        return
+
+    # 1) Try to refresh via keyboard (xdotool)
+    refreshed = False
     try:
-        run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False)
+        r = run(["which", "xdotool"], check=False, capture_output=True)
+        if getattr(r, "returncode", 1) == 0 and (getattr(r, "stdout", "") or "").strip():
+            refreshed = try_send_xdotool_refresh()
+        else:
+            log.info("[I3-REFRESH] xdotool not found on system; skipping keypress method.")
     except Exception as e:
-        log.warning(f"[WARN] Could not restart i3: {e}")
+        log.warning("[I3-REFRESH] Exception checking xdotool: %s", e)
 
-
-def wait_for_i3_ready(timeout: int = 20) -> bool:
-    """
-    Poll i3 (as target user) until it responds to `i3-msg -t get_version`.
-    Returns True if i3 responded within timeout seconds, False otherwise.
-    """
-    log.info("[I3-WAIT] Waiting for i3 to be ready (timeout %ds)...", timeout)
-    start = time.time()
-    while time.time() - start < timeout:
+    # 2) Fallback: try i3-msg restart as the user (may fail if socket unavailable)
+    if not refreshed:
         try:
-            r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", "i3-msg -t get_version"], check=False, capture_output=True)
-            rc = getattr(r, "returncode", 1)
-            out = getattr(r, "stdout", "") or ""
-            if rc == 0 and out.strip():
-                log.info("[I3-WAIT] i3 responded: %s", out.strip().splitlines()[0] if out.strip() else "<empty>")
-                return True
-        except Exception:
-            pass
-        time.sleep(1)
-    log.warning("[I3-WAIT] i3 did not respond within %d seconds.", timeout)
-    return False
+            log.info("[I3-REFRESH] Falling back to i3-msg restart (best-effort).")
+            run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"], check=False, capture_output=True)
+        except Exception as e:
+            log.warning(f"[WARN] Could not run i3-msg restart: {e}")
+
+    # 3) Wait for i3 to be ready
+    i3_ready = wait_for_i3_ready(timeout=20)
+    if not i3_ready:
+        log.warning("[I3-REFRESH] i3 did not respond after refresh attempts; continuing anyway.")
+    else:
+        log.info("[I3-REFRESH] i3 reported ready after refresh.")
 
 
 # ----------------------
-# GRUB theme function kept but NOT called automatically (no prompt)
+# GRUB theme apply (kept but not called automatically)
 # ----------------------
 def apply_grub_theme(startup_dir: Path):
     log.info("[GRUB] Applying grub theme (best-effort).")
@@ -586,8 +730,8 @@ def install_rustscan(startup_dir: Optional[Path] = None):
 def install_spotify(startup_dir: Optional[Path] = None):
     """
     Best-effort Spotify installer:
-     - Tries apt repo + keyring then apt install spotify-client
-     - Falls back to `snap install spotify` if available
+      - Try apt repo + keyring method
+      - Fallback to snap if apt fails or snap is preferred
     """
     log.info("[SPOTIFY] Installing Spotify (best-effort).")
     try:
@@ -597,6 +741,7 @@ def install_spotify(startup_dir: Optional[Path] = None):
         list_content = "deb [signed-by=/usr/share/keyrings/spotify-archive-keyring.gpg] http://repository.spotify.com stable non-free\n"
         try:
             list_file.write_text(list_content)
+            log.info("[SPOTIFY] wrote %s", list_file)
         except Exception as e:
             log.warning("[SPOTIFY] Could not write sources list directly: %s", e)
         run(["apt", "update"], check=False)
@@ -625,11 +770,13 @@ INSTALL_DISPATCH: Dict[str, Callable[[Optional[Path]], None]] = {
 # ----------------------
 # USER COMMANDS (easy place to add extra commands)
 # ----------------------
-# To add commands to run during the setup, add dictionaries to USER_COMMANDS:
+# To add commands to run during setup, add dictionaries to USER_COMMANDS:
 #  {"as_user": TARGET_USER, "cmd": "echo hello > ~/hello.txt"}
 USER_COMMANDS: List[Dict[str, Any]] = [
     # Example (commented):
     # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user daemon-reexec'},
+    # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user daemon-reload'},
+    # {"as_user": TARGET_USER, "cmd": f'XDG_RUNTIME_DIR=/run/user/{pwd.getpwnam(TARGET_USER).pw_uid} systemctl --user restart battery-monitor.service'},
 ]
 
 def run_user_commands():
@@ -667,7 +814,7 @@ def run_user_commands():
 
 
 # ----------------------
-# Interactive prompts (same as before)
+# Interactive prompt for apps
 # ----------------------
 def prompt_multi_select() -> List[int]:
     lines = ["Select applications to install (enter numbers separated by spaces or commas):"]
@@ -725,26 +872,19 @@ def main():
     # 2) Install core apt packages (noninteractive)
     install_apt_packages(APT_PACKAGES)
 
-    # 3) Copy configs into user's home (backups done)
+    # 3) Copy configs from repo into user's home (backups made)
     copy_core_configs(startup_dir)
 
     # 4) Install battery monitor script + service (and run systemctl --user sequence)
     install_battery_monitor(startup_dir)
 
-    # 5) Make scripts executable and restart i3 (as user)
+    # 5) Ensure scripts are executable and refresh i3 (Win+Shift+R simulation if i3 is running)
     set_executables_and_restart_i3()
 
-    # 6) Wait for i3 to be ready before proceeding to install menu
-    i3_ready = wait_for_i3_ready(timeout=20)
-    if not i3_ready:
-        log.warning("[MAIN] i3 did not report ready within timeout; continuing anyway to installation menu.")
-    else:
-        log.info("[MAIN] i3 reported ready — continuing to installation menu.")
-
-    # 7) Run any USER_COMMANDS (if you added them to USER_COMMANDS)
+    # 6) Run any USER_COMMANDS (if you added them to USER_COMMANDS)
     run_user_commands()
 
-    # 8) Interactive app installation (Spotify is available)
+    # 7) Interactive app installation (Spotify included)
     selections = prompt_multi_select()
     if not selections:
         log.info("[INFO] No applications selected for installation.")
