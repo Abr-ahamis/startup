@@ -2,11 +2,13 @@
 """
 startup_setup_full.py
 
-Simplified, hardened, and colorized upgrade:
-- Always copy/apply grub theme (no prompt)
-- Single Y/N prompt: install apps? (Telegram, Brave nightly, RustScan)
-- Make i3 default (writes ~/.xinitrc + ~/.xsession and updates AccountsService if present)
-- Short colored output lines listing the action and the files involved
+Final upgraded script:
+ - Ensures battery-monitor script & service installed for target user
+ - Runs systemctl --user commands as target user with XDG_RUNTIME_DIR
+ - Prints a clear colorized checklist of the final battery/service steps (commands + status)
+ - Single Y/N prompt to install Telegram, Brave (nightly), RustScan
+ - Always applies GRUB theme
+ - Sets i3 as default (writes ~/.xinitrc & ~/.xsession + AccountsService best-effort)
 """
 from __future__ import annotations
 import os
@@ -14,17 +16,14 @@ import sys
 import shutil
 import subprocess
 import datetime
-import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import pwd
 
-# ----------------------------
-# Config
-# ----------------------------
+# ---------- config ----------
 REPO_URL = "https://github.com/Abr-ahamis/startup.git"
 REPO_DIR_NAME = "startup"
-DRY_RUN = False   # set True to simulate actions
+DRY_RUN = False
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 APT_PACKAGES = [
@@ -34,9 +33,7 @@ APT_PACKAGES = [
     "unzip", "curl", "wget", "grub-customizer", "timeshift"
 ]
 
-# ----------------------------
-# Colors and small UI helpers
-# ----------------------------
+# ---------- colors ----------
 CSI = "\033["
 RESET = CSI + "0m"
 BOLD = CSI + "1m"
@@ -44,87 +41,58 @@ GREEN = CSI + "32m"
 YELLOW = CSI + "33m"
 RED = CSI + "31m"
 CYAN = CSI + "36m"
-MAG = CSI + "35m"
+CHECK = "✔"
+CROSS = "✖"
 
-def cprint_ok(msg: str):
-    print(f"{GREEN}[OK]{RESET} {msg}")
+def color_ok(s): return f"{GREEN}{s}{RESET}"
+def color_warn(s): return f"{YELLOW}{s}{RESET}"
+def color_err(s): return f"{RED}{s}{RESET}"
+def color_info(s): return f"{CYAN}{s}{RESET}"
 
-def cprint_info(msg: str):
-    print(f"{CYAN}[INFO]{RESET} {msg}")
-
-def cprint_warn(msg: str):
-    print(f"{YELLOW}[WARN]{RESET} {msg}")
-
-def cprint_err(msg: str):
-    print(f"{RED}[ERROR]{RESET} {msg}")
-
-# ----------------------------
-# Basic environment detection
-# ----------------------------
-def get_target_user() -> str:
-    sudo_user = os.environ.get("SUDO_USER")
-    if sudo_user:
-        return sudo_user
-    return os.environ.get("USER", "root")
-
-TARGET_USER = get_target_user()
-try:
-    USER_HOME = Path(pwd.getpwnam(TARGET_USER).pw_dir)
-except Exception:
-    USER_HOME = Path(os.environ.get("HOME", "/root"))
-
-# ----------------------------
-# Utility wrappers
-# ----------------------------
-def run(cmd, check: bool = False, capture_output: bool = True, shell: bool = False, env: Optional[dict] = None):
+# ---------- helpers ----------
+def run(cmd, check=False, capture_output=True, shell=False, env=None) -> subprocess.CompletedProcess:
     if DRY_RUN:
-        cprint_info(f"DRY-RUN CMD: {cmd}")
-        class D: returncode = 0; stdout = ""; stderr = ""
+        print(color_info(f"[DRY-RUN CMD] {cmd}"))
+        class D:
+            returncode = 0
+            stdout = ""
+            stderr = ""
         return D()
     if isinstance(cmd, (list, tuple)):
         cmd_display = " ".join(map(str, cmd))
     else:
         cmd_display = str(cmd)
-    cprint_info(f"CMD: {cmd_display}")
+    print(color_info(f"[CMD] {cmd_display}"))
     try:
         completed = subprocess.run(cmd, check=check, capture_output=capture_output, text=True, shell=shell, env=env)
         return completed
     except subprocess.CalledProcessError as e:
-        cprint_warn(f"Command failed (rc={e.returncode}): {cmd_display}")
         return e
 
 def ensure_dir(p: Path):
     if not p.exists():
-        if DRY_RUN:
-            cprint_info(f"DRY-MKDIR: {p}")
-            return
-        p.mkdir(parents=True, exist_ok=True)
-        cprint_info(f"MKDIR: {p}")
+        if not DRY_RUN:
+            p.mkdir(parents=True, exist_ok=True)
+        print(color_info(f"MKDIR: {p}"))
 
-def unique_backup_name(p: Path) -> Path:
-    base = p.with_name(p.name + ".backup")
-    if not base.exists():
-        return base
-    return p.with_name(p.name + f".backup.{TIMESTAMP}")
-
-def backup_existing(path: Path) -> Optional[Path]:
-    if not path.exists():
+def backup_existing(p: Path) -> Optional[Path]:
+    if not p.exists():
         return None
-    bak = unique_backup_name(path)
+    bak = p.with_name(p.name + ".backup")
+    if bak.exists():
+        bak = p.with_name(p.name + f".backup.{TIMESTAMP}")
     try:
-        if DRY_RUN:
-            cprint_info(f"DRY-BACKUP: {path} -> {bak}")
-        else:
-            shutil.move(str(path), str(bak))
-            cprint_info(f"BACKUP: {path} -> {bak}")
+        if not DRY_RUN:
+            shutil.move(str(p), str(bak))
+        print(color_info(f"BACKUP: {p} -> {bak}"))
         return bak
     except Exception as e:
-        cprint_warn(f"Backup failed for {path}: {e}")
+        print(color_warn(f"BACKUP-FAIL: {p}: {e}"))
         return None
 
-def safe_copy(src: Path, dst: Path, backup_if_exists: bool = True, dirs_exist_ok: bool = False) -> bool:
+def safe_copy(src: Path, dst: Path, backup_if_exists=True, dirs_exist_ok=False) -> bool:
     if not src.exists():
-        cprint_warn(f"SKIP (missing): {src}")
+        print(color_warn(f"SKIP (missing): {src}"))
         return False
     ensure_dir(dst.parent)
     if dst.exists():
@@ -139,102 +107,63 @@ def safe_copy(src: Path, dst: Path, backup_if_exists: bool = True, dirs_exist_ok
                     dst.unlink()
     try:
         if src.is_dir():
-            if DRY_RUN:
-                cprint_info(f"DRY-COPY-DIR: {src} -> {dst}")
-            else:
-                shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
-                cprint_ok(f"COPY: {src} -> {dst}")
-        else:
-            if DRY_RUN:
-                cprint_info(f"DRY-COPY-FILE: {src} -> {dst}")
-            else:
-                shutil.copy2(src, dst)
-                cprint_ok(f"COPY: {src} -> {dst}")
-        # attempt chown to target user where possible
-        try:
-            import pwd, os
-            uid = pwd.getpwnam(TARGET_USER).pw_uid
-            gid = pwd.getpwnam(TARGET_USER).pw_gid
             if not DRY_RUN:
-                if dst.is_dir():
-                    for root, _, files in os.walk(dst):
-                        os.chown(root, uid, gid)
-                        for f in files:
-                            try:
-                                os.chown(os.path.join(root, f), uid, gid)
-                            except Exception:
-                                pass
-                else:
-                    os.chown(str(dst), uid, gid)
-        except Exception:
-            pass
+                shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
+            print(color_ok(f"COPY: {src} -> {dst}"))
+        else:
+            if not DRY_RUN:
+                shutil.copy2(src, dst)
+            print(color_ok(f"COPY: {src} -> {dst}"))
+        # try chown to user later (best-effort)
         return True
     except Exception as e:
-        cprint_warn(f"Copy failed: {src} -> {dst}: {e}")
+        print(color_warn(f"COPY-FAIL: {src} -> {dst}: {e}"))
         return False
 
-# ----------------------------
-# Root check
-# ----------------------------
-def require_root():
-    if os.geteuid() != 0:
-        cprint_err("Run as root: sudo python3 startup_setup_full.py")
-        sys.exit(1)
+# ---------- environment ----------
+def get_target_user() -> str:
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        return sudo_user
+    return os.environ.get("USER", "root")
 
-# ----------------------------
-# Repo detection/clone
-# ----------------------------
+TARGET_USER = get_target_user()
+try:
+    USER_HOME = Path(pwd.getpwnam(TARGET_USER).pw_dir)
+except Exception:
+    USER_HOME = Path(os.environ.get("HOME", "/root"))
+
+print(color_info(f"Target user: {TARGET_USER}, home: {USER_HOME}"))
+
+# ---------- repo detect/clone (kept simple) ----------
 def detect_or_clone_repo() -> Path:
     cwd = Path.cwd()
-    cprint_info(f"Working dir: {cwd}")
+    print(color_info(f"Working dir: {cwd}"))
     if (cwd / "i3").is_dir() and (cwd / "grub").is_dir() and (cwd / "wallpaper").is_dir():
-        cprint_info("Found startup files in current directory; using current dir as repo")
+        print(color_info("Using current dir as repo"))
         return cwd
     if (cwd / REPO_DIR_NAME).is_dir():
-        cprint_info(f"Found ./{REPO_DIR_NAME}; using it")
         return cwd / REPO_DIR_NAME
     target = cwd / REPO_DIR_NAME
     if DRY_RUN:
-        cprint_info(f"DRY-RUN would clone {REPO_URL} -> {target}")
+        print(color_info(f"DRY-RUN would git clone {REPO_URL} -> {target}"))
         return target
     if shutil.which("git") is None:
-        cprint_warn("git missing; cannot clone. Place repo at ./startup")
+        print(color_warn("git not available; please place repo at ./startup"))
         return target
     r = run(["git", "clone", "--depth", "1", REPO_URL, str(target)], capture_output=True)
     if getattr(r, "returncode", 1) != 0:
-        cprint_warn("git clone returned non-zero; continuing (repo may exist locally).")
+        print(color_warn("git clone returned non-zero; continuing"))
     return target
 
-# ----------------------------
-# Apt install (best-effort)
-# ----------------------------
-def install_apt_packages(packages: List[str]):
-    if DRY_RUN:
-        cprint_info(f"DRY-RUN apt install: {' '.join(packages)}")
-        return
-    if shutil.which("apt") is None:
-        cprint_warn("apt not available; skipping package installation")
-        return
-    env = os.environ.copy()
-    env["DEBIAN_FRONTEND"] = "noninteractive"
-    cprint_info("APT: update")
-    run(["apt", "update"], capture_output=True, env=env)
-    cprint_info(f"APT: install {len(packages)} pkgs")
-    run(["apt", "install", "-y"] + packages, capture_output=True, env=env)
-
-# ----------------------------
-# Copy core configs and wallpapers
-# ----------------------------
+# ---------- core copy ----------
 def copy_core_configs(startup_dir: Path):
-    cprint_info("COPYING: repo -> user config (backups created if present)")
+    print(color_info("COPYING: repo -> user config (backups if present)"))
     repo_i3 = startup_dir / "i3"
-
-    # single-file and directory targets (show short, clear output)
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config")
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf")
-
     # local bin
     src_local_bin = repo_i3 / ".local" / "bin"
     dst_local_bin = USER_HOME / ".local" / "bin"
@@ -242,7 +171,6 @@ def copy_core_configs(startup_dir: Path):
     if src_local_bin.exists():
         for f in sorted(src_local_bin.iterdir()):
             safe_copy(f, dst_local_bin / f.name)
-
     # fonts
     src_fonts = repo_i3 / ".local" / "share" / "fonts"
     dst_fonts = USER_HOME / ".local" / "share" / "fonts"
@@ -250,21 +178,18 @@ def copy_core_configs(startup_dir: Path):
     if src_fonts.exists():
         for f in sorted(src_fonts.iterdir()):
             safe_copy(f, dst_fonts / f.name)
-
     # rofi system theme
-    src_rofi_sys = repo_i3 / "usr" / "share" / "rofi" / "themes" / "Adapta-Nokto.rasi"
-    dst_rofi_sys = Path("/usr/share/rofi/themes/Adapta-Nokto.rasi")
-    if src_rofi_sys.exists():
-        safe_copy(src_rofi_sys, dst_rofi_sys, backup_if_exists=True)
-
-    # copy wallpapers to user Pictures and rotate system images (rename old)
+    src_rofi = repo_i3 / "usr" / "share" / "rofi" / "themes" / "Adapta-Nokto.rasi"
+    if src_rofi.exists():
+        safe_copy(src_rofi, Path("/usr/share/rofi/themes/Adapta-Nokto.rasi"))
+    # wallpapers
     repo_wall = startup_dir / "wallpaper"
     ensure_dir(USER_HOME / "Pictures")
     for name in ("wallpaper.jpg", "wallpaper-1.jpg", "wallpaper-2.jpg"):
         s = repo_wall / name
         if s.exists():
             safe_copy(s, USER_HOME / "Pictures" / name)
-
+    # system rotate
     backgrounds_dir = Path("/usr/share/backgrounds/kali")
     ensure_dir(backgrounds_dir)
     mapping = [
@@ -281,106 +206,106 @@ def copy_core_configs(startup_dir: Path):
         dst = backgrounds_dir / dst_name
         if dst.exists():
             bak = dst.with_name(dst.name + f".{TIMESTAMP}.bak")
-            if DRY_RUN:
-                cprint_info(f"DRY-Rename {dst} -> {bak}")
-            else:
-                try:
+            try:
+                if not DRY_RUN:
                     dst.rename(bak)
-                    cprint_ok(f"SYS-RENAME: {dst} -> {bak}")
-                except Exception as e:
-                    cprint_warn(f"Could not rename {dst}: {e}")
+                print(color_ok(f"SYS-RENAME: {dst} -> {bak}"))
+            except Exception as e:
+                print(color_warn(f"SYS-RENAME FAIL: {dst}: {e}"))
         if s.exists():
             try:
-                if DRY_RUN:
-                    cprint_info(f"DRY SYS-COPY: {s} -> {dst}")
-                else:
+                if not DRY_RUN:
                     shutil.copy2(s, dst)
-                    cprint_ok(f"SYS-COPY: {s} -> {dst}")
+                print(color_ok(f"SYS-COPY: {s} -> {dst}"))
             except Exception as e:
-                cprint_warn(f"Failed to copy {s} -> {dst}: {e}")
+                print(color_warn(f"SYS-COPY FAIL: {s} -> {dst}: {e}"))
 
-# ----------------------------
-# Battery monitor install
-# ----------------------------
-def install_battery_monitor(startup_dir: Path):
+# ---------- battery monitor install & systemd user commands ----------
+def install_battery_monitor_and_enable(startup_dir: Path) -> List[Tuple[str, bool, str]]:
+    """
+    Returns list of tuples (command_str, success_bool, brief_output)
+    Commands executed (as target user with XDG_RUNTIME_DIR=/run/user/UID):
+      - chmod +x ~/.local/bin/battery-monitor.sh
+      - systemctl --user daemon-reload
+      - systemctl --user enable battery-monitor.service
+      - systemctl --user start battery-monitor.service
+    """
+    results = []
+    uid = pwd.getpwnam(TARGET_USER).pw_uid
+    runtime_dir = f"/run/user/{uid}"
+
     repo_script = startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh"
     repo_service = startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service"
+
     dst_script = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
     dst_service = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
 
+    # copy script and service
     if repo_script.exists():
         ensure_dir(dst_script.parent)
         safe_copy(repo_script, dst_script)
-        if not DRY_RUN:
-            try:
+        # chmod +x
+        try:
+            if not DRY_RUN:
                 dst_script.chmod(0o755)
-            except Exception:
-                pass
-            cprint_ok(f"COPY: {repo_script} -> {dst_script}")
+            results.append((f"chmod +x {dst_script}", True, "executable set"))
+            print(color_ok(f"chmod +x {dst_script}"))
+        except Exception as e:
+            results.append((f"chmod +x {dst_script}", False, str(e)))
+            print(color_warn(f"chmod fail {dst_script}: {e}"))
+    else:
+        results.append((f"chmod +x {dst_script}", False, "script missing in repo"))
+        print(color_warn(f"battery script missing: {repo_script}"))
+
     if repo_service.exists():
         ensure_dir(dst_service.parent)
         safe_copy(repo_service, dst_service)
-        cprint_ok(f"COPY: {repo_service} -> {dst_service}")
-
-    # attempt systemctl --user enable/now as the target user (best-effort)
-    try:
-        uid = pwd.getpwnam(TARGET_USER).pw_uid
-        cmd = (
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user daemon-reload && "
-            f"XDG_RUNTIME_DIR=/run/user/{uid} systemctl --user enable --now battery-monitor.service"
-        )
-        if DRY_RUN:
-            cprint_info(f"DRY-RUN: would run (as {TARGET_USER}): {cmd}")
-        else:
-            r = run(["sudo", "-u", TARGET_USER, "bash", "-lc", cmd], capture_output=True)
-            if getattr(r, "returncode", 1) == 0:
-                cprint_ok("BATTERY: systemctl --user reload/enable attempted")
-            else:
-                cprint_warn("BATTERY: systemctl --user returned non-zero; user may need to enable after login")
-    except Exception as e:
-        cprint_warn(f"BATTERY: failed to run user systemctl: {e}")
-
-# ----------------------------
-# GRUB theme apply (always run)
-# ----------------------------
-def apply_grub_theme(startup_dir: Path):
-    cprint_info("Applying GRUB theme (no prompt)")
-    repo_grub = startup_dir / "grub"
-    dst_boot = Path("/boot/grub/themes/kali")
-    dst_usr = Path("/usr/share/grub/themes")
-    ensure_dir(dst_boot)
-    ensure_dir(dst_usr)
-    if repo_grub.exists():
-        # copy to /boot and /usr/share
-        try:
-            if DRY_RUN:
-                cprint_info(f"DRY-COPY {repo_grub} -> {dst_boot}")
-            else:
-                if dst_boot.exists():
-                    shutil.rmtree(dst_boot, ignore_errors=True)
-                shutil.copytree(repo_grub, dst_boot, dirs_exist_ok=True)
-                cprint_ok(f"COPY: {repo_grub} -> {dst_boot}")
-        except Exception as e:
-            cprint_warn(f"GRUB copy to /boot failed: {e}")
-        try:
-            if DRY_RUN:
-                cprint_info(f"DRY-COPY {repo_grub} -> {dst_usr}/kali")
-            else:
-                shutil.copytree(repo_grub, dst_usr / "kali", dirs_exist_ok=True)
-                cprint_ok(f"COPY: {repo_grub} -> {dst_usr}/kali")
-        except Exception as e:
-            cprint_warn(f"GRUB copy to /usr/share failed: {e}")
+        results.append((f"copy {repo_service} -> {dst_service}", True, "copied"))
+        print(color_ok(f"COPY: {repo_service} -> {dst_service}"))
     else:
-        cprint_warn("No grub/ directory found in repo; skipping grub theme copy")
+        results.append((f"copy {repo_service} -> {dst_service}", False, "service missing in repo"))
+        print(color_warn(f"battery service missing: {repo_service}"))
 
-# ----------------------------
-# App installers (Telegram, Brave, RustScan)
-# ----------------------------
-def install_telegram(startup_dir: Optional[Path] = None):
-    cprint_info("Installing Telegram (best-effort)")
+    # helper to run a systemctl --user command as the target user
+    def run_user_systemctl(cmd_args: str) -> Tuple[bool, str]:
+        # full command string (run under sudo -u)
+        # use bash -lc to allow chaining and environment
+        full = f"XDG_RUNTIME_DIR={runtime_dir} systemctl --user {cmd_args}"
+        if DRY_RUN:
+            print(color_info(f"DRY-RUN: sudo -u {TARGET_USER} bash -lc \"{full}\""))
+            return True, "DRY-RUN"
+        # execute via sudo -u TARGET_USER bash -lc
+        cp = run(["sudo", "-u", TARGET_USER, "bash", "-lc", full], capture_output=True)
+        rc = getattr(cp, "returncode", 1)
+        out = (getattr(cp, "stdout", "") or "").strip()
+        err = (getattr(cp, "stderr", "") or "").strip()
+        brief = out if out else err
+        return rc == 0, brief
+
+    # daemon-reload
+    ok, brief = run_user_systemctl("daemon-reload")
+    results.append(("systemctl --user daemon-reload", ok, brief or "no output"))
+    print(color_ok("systemctl --user daemon-reload" if ok else color_warn("systemctl --user daemon-reload failed")))
+
+    # enable
+    ok, brief = run_user_systemctl("enable --now battery-monitor.service")
+    results.append(("systemctl --user enable --now battery-monitor.service", ok, brief or "no output"))
+    print(color_ok("systemctl --user enable --now battery-monitor.service" if ok else color_warn("enable --now failed")))
+
+    # start (if enable combined didn't start/failed, attempt start explicitly)
+    if not results[-1][1]:
+        ok, brief = run_user_systemctl("start battery-monitor.service")
+        results.append(("systemctl --user start battery-monitor.service", ok, brief or "no output"))
+        print(color_ok("systemctl --user start battery-monitor.service" if ok else color_warn("start failed")))
+
+    return results
+
+# ---------- small app installers ----------
+def install_telegram(startup_dir: Path):
+    print(color_info("Installing Telegram (best-effort)"))
     tfile = Path("/tmp/tsetup.tar.xz")
     if DRY_RUN:
-        cprint_info("DRY-RUN: would download + extract telegram and symlink /usr/local/bin/telegram")
+        print(color_info("DRY-RUN: download/extract telegram"))
         return
     run(["wget", "-q", "https://telegram.org/dl/desktop/linux", "-O", str(tfile)])
     opt = Path("/opt/Telegram")
@@ -403,135 +328,230 @@ def install_telegram(startup_dir: Optional[Path] = None):
                 pass
         try:
             link.symlink_to(tbin)
-            cprint_ok(f"SYMLINK: /usr/local/bin/telegram -> {tbin}")
+            print(color_ok(f"SYMLINK: {link} -> {tbin}"))
         except Exception as e:
-            cprint_warn(f"Could not create symlink /usr/local/bin/telegram: {e}")
-    else:
-        cprint_warn("Telegram binary not found after extract")
+            print(color_warn(f"SYMLINK FAIL: {e}"))
 
 def install_brave_nightly():
-    cprint_info("Installing Brave (nightly) (best-effort)")
+    print(color_info("Installing Brave (nightly) (best-effort)"))
     if DRY_RUN:
-        cprint_info("DRY-RUN: would run Brave installer script + apt install brave-browser-nightly")
+        print(color_info("DRY-RUN: brave install"))
         return
     run('curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly bash', shell=True)
     run(["apt", "install", "-y", "brave-browser-nightly"])
 
 def install_rustscan():
-    cprint_info("Installing RustScan (best-effort)")
+    print(color_info("Installing RustScan (best-effort)"))
     deb = Path("/tmp/rustscan.deb")
     url = "https://github.com/RustScan/RustScan/releases/latest/download/rustscan_amd64.deb"
     if DRY_RUN:
-        cprint_info("DRY-RUN: would download rustscan .deb and dpkg -i")
+        print(color_info("DRY-RUN: rustscan install"))
         return
     run(["wget", "-q", url, "-O", str(deb)])
     if deb.exists():
         run(["dpkg", "-i", str(deb)])
         run(["apt", "install", "-f", "-y"])
 
-# ----------------------------
-# Make i3 default: write ~/.xinitrc and ~/.xsession and attempt AccountsService update
-# ----------------------------
+# ---------- set i3 default ----------
 def set_i3_default():
-    cprint_info("Setting i3 as default session for next login (writes ~/.xinitrc and ~/.xsession)")
+    print(color_info("Setting i3 as default: writing ~/.xinitrc & ~/.xsession"))
     xinit = USER_HOME / ".xinitrc"
     xsession = USER_HOME / ".xsession"
     content = "exec i3\n"
-
     for p in (xinit, xsession):
         if p.exists():
             backup_existing(p)
-        if DRY_RUN:
-            cprint_info(f"DRY-RUN: would write {p} with 'exec i3'")
-        else:
-            try:
+        try:
+            if not DRY_RUN:
                 p.write_text(content)
                 p.chmod(0o644)
-                cprint_ok(f"WRITE: {p} -> exec i3")
-            except Exception as e:
-                cprint_warn(f"Could not write {p}: {e}")
-
-    # Try to update AccountsService (used by GDM/LightDM) to set XSession=i3
-    acct_path = Path("/var/lib/AccountsService/users") / TARGET_USER
-    if acct_path.exists():
+            print(color_ok(f"WRITE: {p} -> exec i3"))
+        except Exception as e:
+            print(color_warn(f"WRITE FAIL: {p}: {e}"))
+    # AccountsService best-effort
+    acct = Path("/var/lib/AccountsService/users") / TARGET_USER
+    if acct.exists():
         try:
-            backup_existing(acct_path)
-            txt = acct_path.read_text()
+            txt = acct.read_text()
             if "XSession=" in txt:
                 txt = "\n".join([line if not line.startswith("XSession=") else "XSession=i3" for line in txt.splitlines()])
             else:
                 txt = txt + "\nXSession=i3\n"
-            if DRY_RUN:
-                cprint_info(f"DRY-RUN: would update {acct_path} to set XSession=i3")
-            else:
-                acct_path.write_text(txt)
-                cprint_ok(f"MODIFY: {acct_path} -> XSession=i3")
+            if not DRY_RUN:
+                backup_existing(acct)
+                acct.write_text(txt)
+            print(color_ok(f"MODIFY: {acct} -> XSession=i3"))
         except Exception as e:
-            cprint_warn(f"AccountsService update failed: {e}")
+            print(color_warn(f"AccountsService update failed: {e}"))
     else:
-        cprint_info("AccountsService entry not present; user may need to choose i3 at login once.")
+        print(color_info("AccountsService entry not present; may need to select i3 once in greeter."))
 
-    # Inform user how to make sure DM uses .xsession if needed
-    cprint_info("After reboot/login the display manager may still choose sessions; ensure you select 'i3' once from greeter if needed.")
-
-# ----------------------------
-# Simple Y/N prompt
-# ----------------------------
+# ---------- single yes/no prompt ----------
 def prompt_yes_no(question: str, default: bool = False) -> bool:
-    yes_choices = {"y", "yes"}
-    no_choices = {"n", "no"}
+    yes = {"y", "yes"}
+    no = {"n", "no"}
     default_str = "Y/n" if default else "y/N"
     try:
         while True:
-            ans = input(f"{BOLD}{question} [{default_str}]: {RESET}").strip().lower()
+            ans = input(f"{question} [{default_str}]: ").strip().lower()
             if ans == "" and default:
                 return True
             if ans == "" and not default:
                 return False
-            if ans in yes_choices:
+            if ans in yes:
                 return True
-            if ans in no_choices:
+            if ans in no:
                 return False
-            print("Please answer y or n.")
     except KeyboardInterrupt:
-        cprint_warn("Interrupted; assuming 'no'")
+        print(color_warn("Interrupted; assuming 'no'"))
         return False
 
-# ----------------------------
-# Main flow
-# ----------------------------
+# ---------- main ----------
 def main():
-    require_root()
-    cprint_info(f"Target user: {TARGET_USER}, home: {USER_HOME}")
+    if os.geteuid() != 0:
+        print(color_err("Please run as root: sudo python3 startup_setup_full.py"))
+        sys.exit(1)
+
+    print(color_info("Starting setup..."))
     startup_dir = detect_or_clone_repo()
     if not startup_dir.exists():
-        cprint_warn("Startup repo directory does not exist; many steps may be no-op unless you place the repo.")
-    # install apt packages (best-effort)
-    install_apt_packages(APT_PACKAGES)
-    # copy configs and wallpapers
+        print(color_warn("startup repo not found locally; many steps may be no-op."))
+
+    # apt installs (best-effort)
+    if not DRY_RUN and shutil.which("apt"):
+        print(color_info("APT: update"))
+        run(["apt", "update"])
+        print(color_info("APT: install packages (best-effort)"))
+        run(["apt", "install", "-y"] + APT_PACKAGES)
+    else:
+        print(color_info("Skipping apt installs (DRY-RUN or apt missing)"))
+
+    # copy configs/wallpapers
     copy_core_configs(startup_dir)
-    # install battery monitor (if present)
-    install_battery_monitor(startup_dir)
-    # always apply grub theme
+
+    # ensure battery monitor script/service are installed and run systemctl user commands
+    service_results = install_battery_monitor_and_enable(startup_dir)
+
+    # apply grub theme (always)
     apply_grub_theme(startup_dir)
-    # make executables + restart i3 if running
-    set_executables_and_restart_i3()
-    # apply terminal tweaks (best-effort)
-    # (kept from earlier implementations, best-effort, skip complex output)
-    # ask single y/n: install apps?
+
+    # chmod +x for other scripts, i3 restart if running
+    # set executables
+    for p in (USER_HOME / ".config" / "i3" / "scripts", USER_HOME / ".local" / "bin"):
+        if p.exists():
+            for f in p.rglob("*"):
+                if f.is_file():
+                    try:
+                        if not DRY_RUN:
+                            f.chmod(0o755)
+                    except Exception:
+                        pass
+
+    # attempt i3 restart if running for user
+    p = run(["pgrep", "-u", TARGET_USER, "-x", "i3"])
+    if getattr(p, "returncode", 1) == 0:
+        if not DRY_RUN:
+            run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"])
+
+    # single prompt for apps
     if prompt_yes_no("Install Telegram, Brave (nightly) and RustScan now?", default=False):
         install_telegram(startup_dir)
         install_brave_nightly()
         install_rustscan()
     else:
-        cprint_info("Skipping app installations.")
-    # set i3 default for next login
-    set_i3_default()
-    cprint_ok("Setup complete — check above lines for actions and file paths changed.")
+        print(color_info("Skipping app installations."))
 
-# ----------------------------
-# helpers: detect_or_clone_repo + other functions used above
-# ----------------------------
+    # set i3 default
+    set_i3_default()
+
+    # final checklist print (battery/service related)
+    print("\n" + BOLD + "Final battery-monitor/service checklist:" + RESET)
+    # Always show these four lines (presence, chmod, reload, enable/start) and whether they succeeded
+    # Build expected commands and map to results collected above
+    expected = [
+        (f"Script path exists and executable", f"chmod +x {USER_HOME}/.local/bin/battery-monitor.sh"),
+        (f"Service file copied to user systemd folder", f"{USER_HOME}/.config/systemd/user/battery-monitor.service"),
+        ("Service reloaded", "systemctl --user daemon-reload"),
+        ("Service enabled & started", "systemctl --user enable --now battery-monitor.service"),
+    ]
+
+    # Determine statuses from service_results
+    # service_results is a list of tuples (command_str, success_bool, brief_output)
+    results_map = {cmd: (ok, brief) for (cmd, ok, brief) in service_results if isinstance(cmd, str)}
+
+    # Present each expected line:
+    # For the first two, check actual files present & executable
+    # For reload/enable, query results_map
+    # 1) script exists & executable
+    script_path = USER_HOME / ".local" / "bin" / "battery-monitor.sh"
+    ok_script = script_path.exists() and (script_path.stat().st_mode & 0o111)
+    if ok_script:
+        print(f"{color_ok(CHECK)} Script path exists and executable")
+        print(f"    chmod +x {script_path}")
+    else:
+        print(f"{color_warn(CROSS)} Script path missing or not executable")
+        print(f"    chmod +x {script_path}")
+
+    # 2) service file present
+    svc_path = USER_HOME / ".config" / "systemd" / "user" / "battery-monitor.service"
+    if svc_path.exists():
+        print(f"{color_ok(CHECK)} Service file copied")
+        print(f"    {svc_path}")
+    else:
+        print(f"{color_warn(CROSS)} Service file missing")
+        print(f"    Expected: {svc_path}")
+
+    # 3) reload & 4) enable/start - look up results_map
+    reload_key = "systemctl --user daemon-reload"
+    enable_key = "systemctl --user enable --now battery-monitor.service"
+    start_key = "systemctl --user start battery-monitor.service"
+
+    if reload_key in results_map:
+        ok, brief = results_map[reload_key]
+        if ok:
+            print(f"{color_ok(CHECK)} Service reloaded")
+            print(f"    systemctl --user daemon-reload")
+        else:
+            print(f"{color_warn(CROSS)} Service reload failed")
+            print(f"    systemctl --user daemon-reload -> {brief}")
+    else:
+        print(f"{color_warn(CROSS)} Service reload not attempted (no user session?)")
+        print(f"    systemctl --user daemon-reload")
+
+    if enable_key in results_map:
+        ok, brief = results_map[enable_key]
+        if ok:
+            print(f"{color_ok(CHECK)} Service enabled & running")
+            print(f"    systemctl --user enable --now battery-monitor.service")
+        else:
+            # check if start was attempted afterwards
+            if start_key in results_map:
+                ok2, brief2 = results_map[start_key]
+                if ok2:
+                    print(f"{color_ok(CHECK)} Service started")
+                    print(f"    systemctl --user start battery-monitor.service")
+                else:
+                    print(f"{color_warn(CROSS)} Enable/start failed")
+                    print(f"    enable -> {brief}; start -> {brief2}")
+            else:
+                print(f"{color_warn(CROSS)} Enable/start failed: {brief}")
+                print(f"    systemctl --user enable --now battery-monitor.service")
+    else:
+        # maybe start exists
+        if start_key in results_map and results_map[start_key][0]:
+            print(f"{color_ok(CHECK)} Service started")
+            print(f"    systemctl --user start battery-monitor.service")
+        else:
+            print(f"{color_warn(CROSS)} Service enable/start not attempted or failed")
+            print(f"    systemctl --user enable --now battery-monitor.service")
+
+    print("\n" + color_info("Setup finished. If service commands failed because the user has no active session,"))
+    print(color_info(f"run as that user after login:"))
+    print(color_info(f"  XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user daemon-reload"))
+    print(color_info(f"  XDG_RUNTIME_DIR=/run/user/<UID> systemctl --user enable --now battery-monitor.service"))
+    print(color_ok("Done."))
+
+# ---------- helpers used earlier ----------
 def detect_or_clone_repo() -> Path:
     cwd = Path.cwd()
     if (cwd / "i3").is_dir() and (cwd / "grub").is_dir() and (cwd / "wallpaper").is_dir():
@@ -542,54 +562,32 @@ def detect_or_clone_repo() -> Path:
     if DRY_RUN:
         return target
     if shutil.which("git") is None:
-        cprint_warn("git not found; cannot clone.")
         return target
-    r = run(["git", "clone", "--depth", "1", REPO_URL, str(target)], capture_output=True)
-    if getattr(r, "returncode", 1) != 0:
-        cprint_warn("git clone returned non-zero; continuing anyway.")
+    run(["git", "clone", "--depth", "1", REPO_URL, str(target)])
     return target
 
-def install_apt_packages(packages: List[str]):
-    if DRY_RUN:
-        cprint_info(f"DRY-RUN apt install: {' '.join(packages)}")
-        return
-    if shutil.which("apt") is None:
-        cprint_warn("apt not found; skipping package installation")
-        return
-    env = os.environ.copy()
-    env["DEBIAN_FRONTEND"] = "noninteractive"
-    run(["apt", "update"], capture_output=True, env=env)
-    run(["apt", "install", "-y"] + packages, capture_output=True, env=env)
+def apply_grub_theme(startup_dir: Path):
+    print(color_info("Applying GRUB theme (no prompt)"))
+    repo_grub = startup_dir / "grub"
+    dst_boot = Path("/boot/grub/themes/kali")
+    dst_usr = Path("/usr/share/grub/themes")
+    ensure_dir(dst_boot)
+    ensure_dir(dst_usr)
+    if repo_grub.exists():
+        try:
+            if dst_boot.exists():
+                shutil.rmtree(dst_boot, ignore_errors=True)
+            shutil.copytree(repo_grub, dst_boot, dirs_exist_ok=True)
+            print(color_ok(f"COPY: {repo_grub} -> {dst_boot}"))
+        except Exception as e:
+            print(color_warn(f"GRUB COPY FAIL: {e}"))
+        try:
+            shutil.copytree(repo_grub, dst_usr / "kali", dirs_exist_ok=True)
+            print(color_ok(f"COPY: {repo_grub} -> {dst_usr}/kali"))
+        except Exception as e:
+            print(color_warn(f"GRUB COPY /usr FAIL: {e}"))
+    else:
+        print(color_warn("No grub/ directory found; skipping"))
 
-def set_executables_and_restart_i3():
-    # chmod +x for scripts
-    for p in (USER_HOME / ".config" / "i3" / "scripts", USER_HOME / ".local" / "bin"):
-        if p.exists():
-            for f in p.rglob("*"):
-                if f.is_file():
-                    try:
-                        if not DRY_RUN:
-                            f.chmod(0o755)
-                    except Exception:
-                        pass
-    # restart i3 if running
-    p = run(["pgrep", "-u", TARGET_USER, "-x", "i3"], capture_output=True)
-    if getattr(p, "returncode", 1) == 0:
-        if DRY_RUN:
-            cprint_info("DRY-RUN: would restart i3 (i3-msg restart)")
-        else:
-            run(["sudo", "-u", TARGET_USER, "i3-msg", "restart"])
-
-# ----------------------------
-# ensure require_root function defined here (was above)
-# ----------------------------
-def require_root():
-    if os.geteuid() != 0:
-        cprint_err("Please run as root (sudo python3 startup_setup_full.py)")
-        sys.exit(1)
-
-# ----------------------------
-# Entrypoint
-# ----------------------------
 if __name__ == "__main__":
     main()
