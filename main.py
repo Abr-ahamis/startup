@@ -161,6 +161,7 @@ def copy_core_configs(startup_dir: Path):
     print(color_info("COPYING: repo -> user config (backups if present)"))
     repo_i3 = startup_dir / "i3"
     safe_copy(repo_i3 / ".config" / "i3" / "config", USER_HOME / ".config" / "i3" / "config")
+    safe_copy(repo_i3 / ".config" / "i3" / "scripts" / "terminal-font.sh", USER_HOME / ".config" / "i3" / "scripts" / "terminal-font.sh")
     safe_copy(repo_i3 / ".config" / "i3blocks", USER_HOME / ".config" / "i3blocks", dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", dirs_exist_ok=True)
     safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf")
