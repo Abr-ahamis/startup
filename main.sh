@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-# setup-i3-kali.sh - Hardened & error-tolerant i3 setup for Kali (from abr-ahamis/startup)
+# setup-i3-kali.sh - Final hardened i3 setup for Kali (abr-ahamis/startup)
 # - Single combined prompt: config overwrite (1) or skip (2); plus apps selection
 # - Robust checks for prerequisites, non-fatal failures, clear logging
-# - Attempts to run destructive steps only when user chooses them
-# - Designed to be run as normal user; uses sudo where needed
-# NOTE: This script deletes existing configs when you choose option 1 (no backups).
+# - Designed to be run as a normal user; uses sudo where needed
+# NOTE: Choosing option 1 will delete existing configs (no backups).
 
 set -o pipefail
 
@@ -21,67 +20,52 @@ xss-lock i3lock dex fonts-font-awesome git curl wget unzip rsync \
 timeshift grub-customizer)
 
 ### ---- Helpers ----
-log(){ LOGS+=("[INFO] $1"); echo -e "[INFO] $1"; }
-warn(){ LOGS+=("[WARN] $1"); echo -e "[WARN] $1" >&2; }
-err(){ LOGS+=("[ERROR] $1"); echo -e "[ERROR] $1" >&2; }
+log(){ LOGS+=("[INFO] $1"); printf "[INFO] %s\n" "$1"; }
+warn(){ LOGS+=("[WARN] $1"); printf "[WARN] %s\n" "$1" >&2; }
+err(){ LOGS+=("[ERROR] $1"); printf "[ERROR] %s\n" "$1" >&2; }
 
-# run a command; don't exit script except for fatal situations.
+# run a command; don't exit script on non-fatal failures
 run() {
   if $DRY_RUN; then
-    echo "[DRY-RUN] $*"
+    printf "[DRY-RUN] %s\n" "$*"
     return 0
   fi
   eval "$@" 2>&1 || { warn "Command failed: $*"; return 1; }
 }
 
-# Check if a command exists
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
-# safe mkdir -p with ownership for user
-safe_mkdir_for_user() {
-  local path="$1" user="$2"
-  if [ ! -d "$path" ]; then
-    run sudo mkdir -p -- "$path" || return 1
-  fi
-  run sudo chown -R "$user":"$user" "$path" || true
-}
-
-# attempt to get absolute path
 abs_path() { (cd "$1" 2>/dev/null && pwd -P) || echo "$1"; }
 
-### ---- Determine users/home ----
-# Choose REAL_USER:
+### ---- Determine real user/home ----
 if [ -n "${SUDO_USER:-}" ]; then
   REAL_USER="$SUDO_USER"
 else
   REAL_USER="$(id -un)"
 fi
 
-# If running as root without SUDO_USER, try find a non-root user (UID >=1000)
+# If running as root (no SUDO_USER), try to infer a real human user
 if [ "$(id -u)" -eq 0 ] && [ -z "${SUDO_USER:-}" ]; then
-  # find first human user
   candidate="$(awk -F: '$3>=1000 && $1!="nobody"{print $1; exit}' /etc/passwd)"
   if [ -n "$candidate" ]; then
     REAL_USER="$candidate"
-    warn "Running as root with no SUDO_USER; using detected non-root user: $REAL_USER"
+    warn "Running as root, using detected non-root user: $REAL_USER"
   else
-    warn "Running as root and no non-root user detected; continuing as root (REAL_USER=root)."
+    warn "Running as root and no non-root user found; continuing as root."
     REAL_USER="root"
   fi
 fi
 
 USER_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
 [ -z "$USER_HOME" ] && USER_HOME="$HOME"
-
 CUR_DIR="$(pwd -P)"
 REPO_PATH=""
 
-### ---- Graceful shutdown / summary ----
+### ---- Summary on exit ----
 cleanup_and_summary() {
-  echo
-  echo "===== SUMMARY ====="
-  for l in "${LOGS[@]}"; do echo "$l"; done
-  echo "==================="
+  printf "\n===== SUMMARY =====\n"
+  for l in "${LOGS[@]}"; do printf "%s\n" "$l"; done
+  printf "===================\n"
 }
 trap cleanup_and_summary EXIT
 
@@ -91,7 +75,7 @@ check_prereqs() {
   local needed=(git rsync wget)
   for c in "${needed[@]}"; do
     if ! command_exists "$c"; then
-      warn "'$c' not found."
+      warn "'$c' not found. Some operations may fail."
     fi
   done
   if ! command_exists sudo; then
@@ -120,15 +104,15 @@ locate_or_clone_repo() {
     return 0
   fi
   if ! command_exists git; then
-    err "git not available; cannot clone repo. Install git or place repo locally."
+    err "git not installed; cannot clone repository. Place repo locally or install git."
     return 1
   fi
   if git clone --depth 1 "$REPO_URL" "$CUR_DIR/$REPO_DIR_NAME"; then
     REPO_PATH="$(abs_path "$CUR_DIR/$REPO_DIR_NAME")"
-    log "Cloned repo successfully to: $REPO_PATH"
+    log "Cloned repo to: $REPO_PATH"
     return 0
   else
-    err "Git clone failed. Check network and $REPO_URL."
+    err "Failed to clone $REPO_URL. Check network and permissions."
     return 1
   fi
 }
@@ -137,33 +121,35 @@ validate_repo_structure() {
   local req=(i3 rofi picom wallpaper grub)
   local miss=()
   for d in "${req[@]}"; do
-    if [ ! -d "$REPO_PATH/$d" ]; then miss+=("$d"); fi
+    if [ ! -d "$REPO_PATH/$d" ]; then
+      miss+=("$d")
+    fi
   done
   if [ ${#miss[@]} -gt 0 ]; then
-    err "Repo missing required folders: ${miss[*]}"
+    err "Missing repo folders: ${miss[*]}"
     return 1
   fi
-  log "Repository structure validated."
+  log "Repository layout OK."
   return 0
 }
 
 ### ---- Install apt packages (best-effort) ----
 install_packages() {
   if $DRY_RUN; then
-    log "DRY-RUN: skip apt installs"
+    log "DRY-RUN: skipping apt installs"
     return 0
   fi
   if ! command_exists sudo; then
-    warn "No sudo: cannot run apt install - skipping package installation."
+    warn "sudo missing; cannot install packages automatically."
     return 0
   fi
-  log "Updating apt and attempting to install packages..."
+  log "Running apt update and attempting package installs..."
   run sudo apt update -y || warn "apt update failed"
-  # install in chunks to avoid long arg issues
-  run sudo apt install -y "${APT_PACKAGES[@]}" || warn "Some apt package installs failed; continuing."
+  # install packages (best-effort)
+  run sudo apt install -y "${APT_PACKAGES[@]}" || warn "apt install encountered issues; continuing."
 }
 
-### ---- Config management: delete & copy safely ----
+### ---- Safe delete/copy helpers ----
 safe_delete() {
   local p="$1"
   if [ -e "$p" ]; then
@@ -172,19 +158,30 @@ safe_delete() {
   fi
 }
 
+# rsync directory contents if src is dir; else copy file
 safe_copy_rsync() {
   local src="$1" dst="$2" owner="$3"
   if [ ! -e "$src" ]; then
     warn "Source missing: $src"
     return 1
   fi
+
   run sudo mkdir -p -- "$dst" || warn "mkdir failed for $dst"
-  run sudo rsync -a -- "$src" "$dst" || warn "rsync failed: $src -> $dst"
+
+  if [ -d "$src" ]; then
+    # copy contents of src directory into dst
+    # ensure trailing slash to copy contents rather than directory itself
+    run sudo rsync -a -- "${src%/}/" "$dst/" || warn "rsync failed: $src -> $dst"
+  else
+    run sudo cp -a -- "$src" "$dst/" || warn "cp failed: $src -> $dst"
+  fi
+
   run sudo chown -R "$owner":"$owner" "$dst" || true
 }
 
+### ---- Config management ----
 manage_configs() {
-  local action="$1"  # remove | skip
+  local action="$1"
   if [ "$action" = "skip" ]; then
     log "Skipping config replacement by user choice."
     return 0
@@ -195,7 +192,7 @@ manage_configs() {
   safe_delete "$USER_HOME/.config/i3"
   safe_copy_rsync "$REPO_PATH/i3/.config/i3/" "$USER_HOME/.config/i3" "$REAL_USER"
 
-  # i3 scripts (ensure permissions)
+  # i3 scripts
   safe_delete "$USER_HOME/.config/i3/scripts"
   safe_copy_rsync "$REPO_PATH/i3/.config/i3/scripts/" "$USER_HOME/.config/i3/scripts" "$REAL_USER"
   run sudo chmod -R 755 "$USER_HOME/.config/i3/scripts/" || true
@@ -207,13 +204,14 @@ manage_configs() {
   # rofi
   safe_delete "$USER_HOME/.config/rofi"
   safe_copy_rsync "$REPO_PATH/i3/.config/rofi/" "$USER_HOME/.config/rofi" "$REAL_USER"
+
   # system rofi theme
   if [ -f "$REPO_PATH/i3/usr/share/rofi/themes/Adapta-Nokto.rasi" ]; then
     run sudo mkdir -p /usr/share/rofi/themes || true
     run sudo rm -f /usr/share/rofi/themes/* || true
     run sudo cp -a -- "$REPO_PATH/i3/usr/share/rofi/themes/Adapta-Nokto.rasi" /usr/share/rofi/themes/Adapta-Nokto.rasi || warn "Rofi theme copy failed"
   else
-    warn "Rofi theme file not found in repo location; skipped."
+    warn "Rofi theme not found in repo; skipping."
   fi
 
   # picom
@@ -234,32 +232,36 @@ manage_configs() {
   safe_delete "$USER_HOME/.config/systemd/user/battery-monitor.service"
   safe_delete "$USER_HOME/.config/systemd/user/battery-monitor.sh"
   run sudo mkdir -p "$USER_HOME/.config/systemd/user" || true
-  run sudo cp -a -- "$REPO_PATH/i3/.config/systemd/user/battery-monitor.service" "$USER_HOME/.config/systemd/user/" 2>/dev/null || warn "No battery-monitor.service found"
-  run sudo cp -a -- "$REPO_PATH/i3/.config/systemd/user/battery-monitor.sh" "$USER_HOME/.config/systemd/user/" 2>/dev/null || warn "No battery-monitor.sh found"
+  if [ -f "$REPO_PATH/i3/.config/systemd/user/battery-monitor.service" ]; then
+    run sudo cp -a -- "$REPO_PATH/i3/.config/systemd/user/battery-monitor.service" "$USER_HOME/.config/systemd/user/" || warn "Failed to copy battery-monitor.service"
+  fi
+  if [ -f "$REPO_PATH/i3/.config/systemd/user/battery-monitor.sh" ]; then
+    run sudo cp -a -- "$REPO_PATH/i3/.config/systemd/user/battery-monitor.sh" "$USER_HOME/.config/systemd/user/" || warn "Failed to copy battery-monitor.sh"
+    run sudo chmod 755 "$USER_HOME/.config/systemd/user/battery-monitor.sh" || true
+  fi
   run sudo chown -R "$REAL_USER":"$REAL_USER" "$USER_HOME/.config/systemd/user" || true
-  run sudo chmod 755 "$USER_HOME/.config/systemd/user/battery-monitor.sh" || true
+
+  log "Config copy step finished."
 }
 
-### ---- Manage wallpaper (user + system) ----
+### ---- Wallpapers ----
 manage_wallpapers() {
   local src="$REPO_PATH/wallpaper"
   local userpics="$USER_HOME/Pictures"
   local sysdir="/usr/share/backgrounds/kali"
   local files=(wallpaper.jpg wallpaper-1.jpg wallpaper-2.jpg)
 
-  # copy to user pictures
   run sudo mkdir -p "$userpics" || true
   for f in "${files[@]}"; do
     if [ -f "$src/$f" ]; then
-      run sudo cp -a -- "$src/$f" "$userpics/" || warn "Failed copy $f to $userpics"
+      run sudo cp -a -- "$src/$f" "$userpics/" || warn "Failed to copy $f to $userpics"
       run sudo chown "$REAL_USER":"$REAL_USER" "$userpics/$f" || true
     else
-      warn "Source wallpaper missing: $src/$f"
+      warn "Missing repo wallpaper: $src/$f"
     fi
   done
 
-  # system replacements (rename existing by appending timestamp)
-  run sudo mkdir -p "$sysdir" || warn "Cannot create $sysdir"
+  run sudo mkdir -p "$sysdir" || warn "Cannot ensure $sysdir"
   declare -A mapping=( \
     ["login.svg"]="wallpaper.jpg" \
     ["kali-maze-16x9.jpg"]="wallpaper.jpg" \
@@ -274,71 +276,70 @@ manage_wallpapers() {
     srcfile="${mapping[$target]}"
     if [ -e "$sysdir/$target" ]; then
       bak="${target}.${TIMESTAMP}.bak"
-      log "Renaming $sysdir/$target -> $sysdir/$bak"
-      run sudo mv -- "$sysdir/$target" "$sysdir/$bak" || warn "Could not rename $sysdir/$target"
+      log "Renaming system wallpaper: $sysdir/$target -> $sysdir/$bak"
+      run sudo mv -- "$sysdir/$target" "$sysdir/$bak" || warn "Rename failed for $sysdir/$target"
     fi
     if [ -f "$src/$srcfile" ]; then
-      log "Copying $srcfile to $sysdir/$target"
-      run sudo cp -a -- "$src/$srcfile" "$sysdir/$target" || warn "Failed to copy wallpaper"
+      log "Copying wallpaper $srcfile -> $sysdir/$target"
+      run sudo cp -a -- "$src/$srcfile" "$sysdir/$target" || warn "Failed to copy wallpaper $srcfile -> $target"
     else
       warn "Repo wallpaper missing for mapping: $srcfile"
     fi
   done
+  log "Wallpapers updated (user & system) - best-effort."
 }
 
-### ---- GRUB theme management ----
+### ---- GRUB theme ----
 manage_grub_theme() {
   local src="$REPO_PATH/grub"
   local t1="/boot/grub/themes/kali"
   local t2="/usr/share/grub/themes"
 
   run sudo mkdir -p "$t1" "$t2" || true
-  # remove existing files safely
   run sudo find "$t1" -mindepth 1 -maxdepth 1 -print0 -exec rm -rf -- {} \; 2>/dev/null || true
   run sudo find "$t2" -mindepth 1 -maxdepth 1 -print0 -exec rm -rf -- {} \; 2>/dev/null || true
+
   if [ -d "$src" ]; then
-    run sudo cp -a -- "$src/"* "$t1/" 2>/dev/null || warn "Failed copying grub files to $t1"
-    run sudo cp -a -- "$src/"* "$t2/" 2>/dev/null || warn "Failed copying grub files to $t2"
+    run sudo cp -a -- "$src/"* "$t1/" 2>/dev/null || warn "Copy to $t1 failed"
+    run sudo cp -a -- "$src/"* "$t2/" 2>/dev/null || warn "Copy to $t2 failed"
   else
-    warn "No grub assets in repo: $src"
+    warn "No grub assets to copy at: $src"
   fi
 }
 
-### ---- Battery-monitor user systemd reload ----
+### ---- Battery-monitor (user systemd) ----
 manage_battery_service() {
-  # systemctl --user requires an active user systemd; attempt but never fatal
-  log "Attempting to reload user systemd units for $REAL_USER (best-effort)."
+  log "Attempting to reload user systemd for $REAL_USER (best-effort)."
   if $DRY_RUN; then
-    echo "[DRY] systemctl --user daemon-reexec"
+    printf "[DRY] systemctl --user daemon-reexec\n"
     return 0
   fi
   if ! command_exists systemctl; then
-    warn "systemctl not found; skipping user service reload."
+    warn "systemctl missing; skipping user service reload."
     return 0
   fi
-  # Try as the real user
-  sudo -u "$REAL_USER" systemctl --user daemon-reexec 2>/dev/null || warn "daemon-reexec may have failed (no user systemd)"
+  sudo -u "$REAL_USER" systemctl --user daemon-reexec 2>/dev/null || warn "daemon-reexec may have failed"
   sudo -u "$REAL_USER" systemctl --user daemon-reload 2>/dev/null || warn "daemon-reload failed"
-  sudo -u "$REAL_USER" systemctl --user restart battery-monitor.service 2>/dev/null || warn "Restart battery-monitor.service failed (unit may be absent)."
+  sudo -u "$REAL_USER" systemctl --user restart battery-monitor.service 2>/dev/null || warn "battery-monitor.service restart failed (unit may be absent)"
 }
 
-### ---- Finalization: chmod + restart i3 if running ----
+### ---- Finalize: perms + i3 restart if running for user ----
 finalize() {
   run sudo chmod -R 755 "$USER_HOME/.config/i3/scripts/" || true
   run sudo chmod -R 755 "$USER_HOME/.local/bin/" || true
   run sudo chown -R "$REAL_USER":"$REAL_USER" "$USER_HOME/.config/i3" || true
   run sudo chown -R "$REAL_USER":"$REAL_USER" "$USER_HOME/.local" || true
 
-  # Restart i3 only if running
+  # Restart i3 only if running for REAL_USER
   if pgrep -u "$REAL_USER" -x i3 >/dev/null 2>&1 || pgrep -u "$REAL_USER" -f "i3" >/dev/null 2>&1; then
-    log "i3 detected for $REAL_USER; attempting restart (i3-msg restart)."
+    log "i3 detected; attempting i3-msg restart as $REAL_USER."
     if $DRY_RUN; then
-      echo "[DRY] sudo -u \"$REAL_USER\" i3-msg restart"
+      printf "[DRY] sudo -u '%s' i3-msg restart\n" "$REAL_USER"
     else
       sudo -u "$REAL_USER" DISPLAY="${DISPLAY:-:0}" XAUTHORITY="${XAUTHORITY:-$USER_HOME/.Xauthority}" i3-msg restart 2>/dev/null || warn "i3-msg restart likely failed (DISPLAY/XAUTH)."
     fi
   else
-    log "i3 not running for $REAL_USER; skipping restart to avoid breaking other DEs."
+    log "i3 not running for $REAL_USER; skipping restart."
   fi
 }
 
@@ -347,37 +348,38 @@ install_telegram() {
   local src="$REPO_PATH/i3/.local/bin/Telegram"
   local dst="/usr/local/bin/telegram"
   if [ -f "$src" ]; then
-    run sudo rm -f "$dst" || true
-    run sudo cp -a -- "$src" "$dst" || warn "Failed to install telegram binary"
-    run sudo chmod 755 "$dst" || true
+    run sudo rm -f -- "$dst" || true
+    run sudo cp -a -- "$src" "$dst" || warn "Telegram copy failed"
+    run sudo chmod 755 -- "$dst" || true
+    log "Telegram installed to $dst"
   else
-    warn "Telegram binary missing in repo: $src"
+    warn "Telegram binary not in repo: $src"
   fi
 }
 install_brave() {
   log "Installing Brave Nightly (best-effort)..."
-  run bash -c "curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly sudo -E bash -" || warn "Brave installer failed"
-  run sudo apt install -y brave-browser-nightly || warn "apt install brave failed"
+  run bash -c "curl -fsS https://dl.brave.com/install.sh | CHANNEL=nightly sudo -E bash -" || warn "Brave installer failure"
+  run sudo apt install -y brave-browser-nightly || warn "Brave apt install failed"
 }
 install_vscode() {
   local tmp="/tmp/code_latest_$$.deb"
-  run rm -f "$tmp" || true
+  run rm -f -- "$tmp" || true
   run wget -q -O "$tmp" "https://update.code.visualstudio.com/latest/linux-deb-x64/stable" || { warn "VSCode download failed"; return 1; }
   run sudo dpkg -i "$tmp" || true
   run sudo apt install -f -y || true
-  run rm -f "$tmp" || true
+  run rm -f -- "$tmp" || true
 }
 install_rustscan() {
   local tmp="/tmp/rustscan_$$.deb"
-  run rm -f "$tmp" || true
+  run rm -f -- "$tmp" || true
   run wget -q -O "$tmp" "https://github.com/RustScan/RustScan/releases/latest/download/rustscan_amd64.deb" || warn "RustScan download failed"
   run sudo dpkg -i "$tmp" || true
   run sudo apt install -f -y || true
-  run rm -f "$tmp" || true
+  run rm -f -- "$tmp" || true
 }
 install_spotify(){
   run sudo apt-get install -y curl gnupg apt-transport-https || true
-  run curl -sS https://download.spotify.com/debian/pubkey_0D811D58.gpg | sudo gpg --dearmour -o /usr/share/keyrings/spotify-archive-keyring.gpg || warn "Spotify key add failed"
+  run curl -sS https://download.spotify.com/debian/pubkey_0D811D58.gpg | sudo gpg --dearmour -o /usr/share/keyrings/spotify-archive-keyring.gpg || warn "Spotify key failed"
   run echo "deb [signed-by=/usr/share/keyrings/spotify-archive-keyring.gpg] http://repository.spotify.com stable non-free" | sudo tee /etc/apt/sources.list.d/spotify.list >/dev/null
   run sudo apt update -y || true
   run sudo apt install -y spotify-client || warn "Spotify install failed"
@@ -418,18 +420,26 @@ Apps:
   5) Spotify
 
 Format: <1|2>;<a|n|list>   e.g. 1; 1 3 5
-Enter: 
+Enter:
 PROMPT
-  read -r USER_INPUT
-  # default if empty
+
+  # read user input; default to "2;n" if empty or non-interactive
+  if [ -t 0 ]; then
+    read -r USER_INPUT
+  else
+    USER_INPUT=""
+  fi
   USER_INPUT="${USER_INPUT:-2;n}"
+
   CONFIG_CHOICE="$(echo "$USER_INPUT" | awk -F';' '{print $1}' | tr -d '[:space:]')"
   APP_PART="$(echo "$USER_INPUT" | awk -F';' '{print $2}' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
   [ -z "$CONFIG_CHOICE" ] && CONFIG_CHOICE=2
   [ -z "$APP_PART" ] && APP_PART="n"
 
-  if [[ "$APP_PART" =~ ^[aA]$ ]]; then APP_SELECTION=(1 2 3 4 5)
-  elif [[ "$APP_PART" =~ ^[nN]$ ]]; then APP_SELECTION=()
+  if [[ "$APP_PART" =~ ^[aA]$ ]]; then
+    APP_SELECTION=(1 2 3 4 5)
+  elif [[ "$APP_PART" =~ ^[nN]$ ]]; then
+    APP_SELECTION=()
   else
     read -r -a APP_SELECTION <<< "$APP_PART"
   fi
@@ -443,8 +453,16 @@ PROMPT
 ### ---- MAIN ----
 main() {
   check_prereqs
-  if ! locate_or_clone_repo; then err "Repo missing/clone failed; aborting."; exit 1; fi
-  if ! validate_repo_structure; then err "Repo invalid; aborting."; exit 1; fi
+
+  if ! locate_or_clone_repo; then
+    err "Repository missing and clone failed. Exiting."
+    exit 1
+  fi
+
+  if ! validate_repo_structure; then
+    err "Repository structure invalid. Exiting."
+    exit 1
+  fi
 
   get_user_choices
 
@@ -463,10 +481,10 @@ main() {
   if [ ${#APP_SELECTION[@]} -gt 0 ]; then
     install_selected_apps "${APP_SELECTION[@]}"
   else
-    log "No apps selected for installation."
+    log "No apps selected."
   fi
 
-  log "Setup finished (non-fatal errors may have been warned)."
+  log "Setup finished (non-fatal warnings may have been printed)."
 }
 
 main "$@"
