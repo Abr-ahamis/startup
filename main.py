@@ -27,7 +27,7 @@ DRY_RUN = False
 TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 APT_PACKAGES = [
-    "i3-wm", "i3blocks", "rofi", "xdotool", "dex", "acpi", "upower",
+    "i3","i3-wm", "i3blocks", "rofi", "xdotool", "dex", "acpi", "upower",
     "xfce4-power-manager", "i3lock", "xss-lock", "pulseaudio-utils",
     "brightnessctl", "feh", "picom", "fonts-font-awesome", "git", "rsync",
     "unzip", "curl", "wget", "grub-customizer", "timeshift"
@@ -199,6 +199,7 @@ def copy_core_configs(startup_dir: Path):
         ("wallpaper-1.jpg", "kali-waves-16x9.png"),
         ("wallpaper.jpg", "kali-oleo-16x9.png"),
         ("wallpaper-2.jpg", "kali-tiles-purple-16x9.jpg"),
+        ("wallpaper-1.jpg", "wallpaper-1.jpg"),
         ("wallpaper-1.jpg", "login-blurred"),
     ]
     for src_name, dst_name in mapping:
