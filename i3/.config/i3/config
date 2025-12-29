@@ -67,6 +67,8 @@ bindsym Mod1+Shift+f exec firefox
 bindsym Mod1+Shift+b exec brave-browser
 bindsym Mod1+Shift+T exec /opt/Telegram/./Telegram
 
+# flameshot
+bindsym Mod1+Shift+s exec flameshot gui
 
 
 # kill focused window
