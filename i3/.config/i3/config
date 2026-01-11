@@ -39,6 +39,21 @@ gaps right 1px
 #   - 'inverse_outer' keeps outer gaps only when one window is present
 smart_gaps off
 
+# Nightlight 
+exec --no-startup-id redshift -O 4500
+
+# Night light ON (warm)
+bindsym Mod1+F3 exec redshift -O 3500
+
+# Night light ON (medium)
+bindsym Mod1+F2 exec redshift -O 4500
+
+# Night light OFF
+bindsym Mod1+F1 exec redshift -x
+
+
+
+
 # and nm-applet is a desktop environment-independent system tray GUI for it.
 exec --no-startup-id nm-applet
 bindsym $mod+Shift+p exec --no-startup-id /home/neo/.local/bin/powermenu
