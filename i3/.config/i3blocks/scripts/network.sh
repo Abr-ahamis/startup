@@ -24,8 +24,17 @@ human_rate() {
   }'
 }
 
-# Pick the primary network interface
+# Pick the primary network interface. Prioritize tunnels (VPNs).
 pick_iface() {
+  # Check for an active tunnel interface first
+  local tun_if
+  tun_if=$(ip -o addr show | awk '$2 ~ /^tun|^tap/ {print $2; exit}')
+  if [[ -n "$tun_if" ]]; then
+    printf '%s' "$tun_if"
+    return
+  fi
+
+  # If no tunnel, find the default route's interface
   ip route | grep '^default' | awk '{print $5}' | head -n1
 }
 
@@ -90,4 +99,4 @@ IP=$(get_ip "$IFACE")
 
 # --- Output for i3blocks ---
 # Example: ↑ 1.2 M/s    ↓ 25.4 K/s    |    192.168.1.100   (wlan0)
-echo "↑ $UP    ↓ $DOWN    |    $IP   ($IFACE)"
+echo "↑ $UP    ↓ $DOWN    |    $IP   ($IFACE)"  
