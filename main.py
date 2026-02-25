@@ -16,7 +16,6 @@ Use --dry-run to preview without changes.
 """
 from __future__ import annotations
 
-import argparse
 import datetime
 import os
 import pwd
@@ -30,8 +29,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # =========================
-# Configuration
+# Configuration Flags (bash-style)
 # =========================
+DRY_RUN = True       # Set to True to preview without making changes
+NO_MENU = True       # Set to True to skip optional apps menu
+CLEAR_SCREEN = False # Set to True to clear screen during menu
 REPO_URL = "https://github.com/Abr-ahamis/startup.git"
 REPO_DIR_NAME = "startup"
 BACKUP_ROOT_NAME = ".BACKUPDV"
@@ -615,7 +617,7 @@ def install_rustscan(dry_run: bool) -> None:
         return
     print(ok("[➜] RustScan installing..."))
     deb = Path("/tmp/rustscan_amd64.deb")
-    url = "https://github.com/RustScan/RustScan/releases/latest/download/rustscan_amd64.deb"
+    url = "https://github.com/bee-san/RustScan/releases/download/2.4.1/rustscan.deb.zip"
     if not download(url, deb, dry_run):
         print(warn("[✖] RustScan download failed"))
         return
@@ -678,21 +680,69 @@ def restart_i3_or_prompt(dry_run: bool) -> None:
             except EOFError:
                 pass
 
+
+def set_grub_and_session_defaults(dry_run: bool) -> None:
+    section("⚙️  GRUB & SESSION DEFAULTS")
+    grub_cfg = Path("/boot/grub/grub.cfg")
+    if grub_cfg.exists():
+        try:
+            windows_entry = run(["grep", "-i", "windows", str(grub_cfg)], capture_output=True)
+            if windows_entry.stdout:
+                match = windows_entry.stdout.split("\n")[0]
+                if "'" in match:
+                    try:
+                        windows_num = match.split("'")[1]
+                        if not dry_run:
+                            run(["sed", "-i", f's/set default="0"/set default="{windows_num}"/', str(grub_cfg)])
+                        print(ok(f"GRUB default set to Windows entry: {windows_num}"))
+                    except Exception as e:
+                        print(warn(f"Could not extract Windows entry number: {e}"))
+                else:
+                    print(warn("Windows entry found but no number extracted"))
+            else:
+                print(warn("No Windows entry found in grub.cfg"))
+        except Exception as e:
+            print(warn(f"GRUB default update failed: {e}"))
+    else:
+        print(warn("/boot/grub/grub.cfg not found"))
+
+    xsession_file = Path("/etc/X11/Xsession.d/99-i3-default")
+    try:
+        if not dry_run:
+            xsession_file.parent.mkdir(parents=True, exist_ok=True)
+            xsession_file.write_text("exec i3\n")
+            xsession_file.chmod(0o644)
+        print(ok("i3 set as default in Xsession"))
+    except Exception as e:
+        print(warn(f"Xsession.d update failed: {e}"))
+
+    try:
+        if not dry_run:
+            run(["update-alternatives", "--set", "x-session-manager", "/usr/bin/i3"])
+        print(ok("i3 set as x-session-manager alternative"))
+    except Exception as e:
+        print(warn(f"update-alternatives failed: {e}"))
+
+    gdm_conf = Path("/etc/gdm3/custom.conf")
+    try:
+        if not dry_run:
+            if gdm_conf.exists():
+                content = gdm_conf.read_text()
+                if "[daemon]" not in content or "DefaultSession=i3.desktop" not in content:
+                    with gdm_conf.open("a") as f:
+                        f.write("\n[daemon]\nDefaultSession=i3.desktop\n")
+            else:
+                gdm_conf.write_text("[daemon]\nDefaultSession=i3.desktop\n")
+        print(ok("GDM3 default session set to i3"))
+    except Exception as e:
+        print(warn(f"GDM3 custom.conf update failed: {e}"))
+
 # =========================
 # Main
 # =========================
 
-def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Startup environment setup")
-    p.add_argument("--dry-run", action="store_true", help="Print actions without making changes")
-    p.add_argument("--no-menu", action="store_true", help="Skip optional apps menu")
-    p.add_argument("--clear-screen", action="store_true", help="Clear screen during menu")
-    return p.parse_args()
-
-
 def main() -> None:
-    args = parse_args()
-    dry_run = args.dry_run
+    dry_run = DRY_RUN
     log_path = DEFAULT_LOG
 
     if os.geteuid() != 0 and not dry_run:
@@ -714,10 +764,10 @@ def main() -> None:
     make_scripts_executable(dry_run)
 
     section("🛠 OPTIONAL APPLICATIONS")
-    if args.no_menu:
+    if NO_MENU:
         print(ok("Optional apps menu skipped"))
     else:
-        selected = select_menu(OPTIONAL_APPS, no_clear=not args.clear_screen)
+        selected = select_menu(OPTIONAL_APPS, no_clear=not CLEAR_SCREEN)
         if any(selected):
             print("\n──────────────────────────────────────────────")
             print("🛠 Installing Optional Applications")
@@ -732,6 +782,7 @@ def main() -> None:
             print(ok("No optional apps selected — skipping"))
 
     set_i3_default(dry_run)
+    set_grub_and_session_defaults(dry_run)
     restart_i3_or_prompt(dry_run)
 
     # final checklist snippet for battery service
