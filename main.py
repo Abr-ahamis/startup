@@ -43,7 +43,7 @@ APT_PACKAGES = [
     "i3", "i3-wm", "i3blocks", "rofi", "xdotool", "dex", "acpi", "upower",
     "xfce4-power-manager", "i3lock", "xss-lock", "pulseaudio-utils",
     "brightnessctl", "feh", "picom", "fonts-font-awesome", "git", "rsync",
-    "unzip", "curl", "wget", "grub-customizer", "timeshift", "redshift",
+    "unzip", "ruby-notify", "curl", "wget", "grub-customizer", "timeshift", "redshift",
 ]
 
 OPTIONAL_APPS = ["Telegram", "Brave (Nightly)", "RustScan"]
