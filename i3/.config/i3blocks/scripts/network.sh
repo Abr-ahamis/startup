@@ -8,10 +8,8 @@ STATE_FILE="/tmp/i3blocks_net_speed.state"
 # Human-readable bytes/sec
 human_rate() {
   local bps="$1"
-  if [[ -z "$bps" || "$bps" -lt 0 ]]; then
-    bps=0
-  fi
   awk -v bps="$bps" 'BEGIN{
+    if (bps == "" || bps < 0) { bps = 0 }
     if (bps < 1000) {
       printf("%.0f B/s", bps)
     } else if (bps < 1000*1000) {
@@ -81,9 +79,7 @@ rx_delta=$(($rx_now - $rx_prev))
 tx_delta=$(($tx_now - $tx_prev))
 
 # Avoid division by zero if the script is called too quickly
-if (( $(echo "$time_delta < 0.001" | bc -l) )); then
-    time_delta=1
-fi
+time_delta=$(awk -v t="$time_delta" 'BEGIN{ if (t < 0.001) t = 1; print t }')
 
 # Calculate speeds in bytes per second
 rx_bps=$(awk "BEGIN{print $rx_delta / $time_delta}")
@@ -99,4 +95,4 @@ IP=$(get_ip "$IFACE")
 
 # --- Output for i3blocks ---
 # Example: ↑ 1.2 M/s    ↓ 25.4 K/s    |    192.168.1.100   (wlan0)
-echo "↑ $UP    ↓ $DOWN    |    $IP   ($IFACE)"  
+echo "↑ $UP    ↓ $DOWN    |    $IP   ($IFACE)"
