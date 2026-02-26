@@ -14,7 +14,7 @@ interval=persist
 
 [cpu]
 command=~/.config/i3blocks/scripts/cpu.sh
-interval=persist
+interval=1
 min_width=CPU: 100%
 
 #[disk]
