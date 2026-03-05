@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Tuple
 # =========================
 # Configuration Flags (bash-style)
 # =========================
-DRY_RUN = True       # Set to True to preview without making changes
+DRY_RUN = False      # Set to True to preview without making changes
 NO_MENU = True       # Set to True to skip optional apps menu
 CLEAR_SCREEN = False # Set to True to clear screen during menu
 REPO_URL = "https://github.com/Abr-ahamis/startup.git"
