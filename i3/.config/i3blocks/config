@@ -1,32 +1,13 @@
 # i3blocks config - GNOME-style
 
 separator_block_width=15
-markup=pango
+markup=Noto Sans Mono
+#DejaVu Sans Mono
+#Hack
+#Fira Code
+#pango
 
-[network]
-command=~/.config/i3blocks/scripts/network.sh
-interval=1
-
-[memory]
-command=~/.config/i3blocks/scripts/memory.sh
+[Status]
+command=~/.config/i3blocks/scripts/status.sh
 interval=persist
-
-
-[cpu]
-command=~/.config/i3blocks/scripts/cpu.sh
-interval=1
-min_width=CPU: 100%
-
-#[disk]
-#command=~/.config/i3blocks/scripts/disk.sh
-#interval=60
-
-[date]
-command=~/.config/i3blocks/scripts/date.sh
-interval=persist
-
-
-[battery]
-command=~/.config/i3blocks/scripts/battery.sh
-interval=30
-
+                    
