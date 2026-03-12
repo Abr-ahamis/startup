@@ -49,6 +49,9 @@ APT_PACKAGES = [
     "grub-customizer",
     "timeshift",
     "redshift",
+    "bmon",
+    "nload",
+    "iftop",
 ]
 
 PKG_CMD_MAP: Dict[str, str] = {
