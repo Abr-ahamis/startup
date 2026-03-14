@@ -1,13 +1,9 @@
 # i3blocks config - GNOME-style
 
 separator_block_width=15
-markup=Noto Sans Mono
-#DejaVu Sans Mono
-#Hack
-#Fira Code
-#pango
+# Fonts are configured in i3bar (i3 config). This controls markup parsing only.
+markup=pango
 
 [Status]
-command=~/.config/i3blocks/scripts/status.sh
+command=bash ~/.config/i3blocks/scripts/status.sh
 interval=persist
-                    

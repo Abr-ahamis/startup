@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import termios
+import tempfile
 import time
 import tty
 import json
@@ -1428,18 +1429,234 @@ def init_backup_mode() -> None:
     print(info(f"Backups enabled: {BACKUP_SESSION_DIR}"))
 
 
+def print_usage() -> None:
+    print("Usage: python3 main.py [options]")
+    print()
+    print("Options:")
+    print("  -r                 Rollback / restore (requires root unless --dry-run)")
+    print("  --configs-only      Deploy configs only (i3/i3blocks/rofi/picom/fonts/bin)")
+    print("  --dry-run, -n       Print actions without changing anything")
+    print("  --verify            Verify repo + installed configs and run quick checks")
+    print("  --self-test         Copy configs into a temp dir and run sanity checks")
+    print("  -h, --help          Show this help")
+
+
+def _file_contains(path: Path, needle: str) -> bool:
+    try:
+        return needle in path.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+
+
+def verify(startup_dir: Path) -> int:
+    section("✅ VERIFY / CHECK")
+    ok_all = True
+
+    # 1) Repo layout and required files.
+    required = [
+        startup_dir / "i3" / ".config" / "i3" / "config",
+        startup_dir / "i3" / ".config" / "i3blocks" / "config",
+        startup_dir / "i3" / ".config" / "i3blocks" / "scripts" / "status.sh",
+        startup_dir / "i3" / ".config" / "rofi" / "config.rasi",
+        startup_dir / "i3" / ".config" / "picom" / "picom.conf",
+        startup_dir / "i3" / ".local" / "bin" / "battery-monitor.sh",
+        startup_dir / "i3" / ".config" / "systemd" / "user" / "battery-monitor.service",
+        startup_dir / "grub",
+        startup_dir / "wallpaper",
+        startup_dir / "install",
+    ]
+    for p in required:
+        if not p.exists():
+            print(warn(f"[repo] missing: {p}"))
+            ok_all = False
+
+    # 2) Repo config content checks (prevents the i3blocks-not-showing bug from coming back).
+    repo_i3_cfg = startup_dir / "i3" / ".config" / "i3" / "config"
+    repo_blocks_cfg = startup_dir / "i3" / ".config" / "i3blocks" / "config"
+    if repo_i3_cfg.exists():
+        want = 'status_command /bin/sh -c "i3blocks -c ~/.config/i3blocks/config"'
+        if not _file_contains(repo_i3_cfg, want):
+            print(warn("[repo] i3 config: expected status_command wrapper not found"))
+            ok_all = False
+    if repo_blocks_cfg.exists():
+        if not _file_contains(repo_blocks_cfg, "markup=pango"):
+            print(warn("[repo] i3blocks config: expected markup=pango not found"))
+            ok_all = False
+        if not _file_contains(repo_blocks_cfg, "command=bash ~/.config/i3blocks/scripts/status.sh"):
+            print(warn("[repo] i3blocks config: expected bash command not found"))
+            ok_all = False
+
+    # 3) Installed config checks (only if the files exist).
+    inst_i3_cfg = USER_HOME / ".config" / "i3" / "config"
+    inst_blocks_cfg = USER_HOME / ".config" / "i3blocks" / "config"
+    inst_status_sh = USER_HOME / ".config" / "i3blocks" / "scripts" / "status.sh"
+    if inst_i3_cfg.exists():
+        want = 'status_command /bin/sh -c "i3blocks -c ~/.config/i3blocks/config"'
+        if not _file_contains(inst_i3_cfg, want):
+            print(warn(f"[installed] i3 config missing expected status_command wrapper: {inst_i3_cfg}"))
+            ok_all = False
+    else:
+        print(warn(f"[installed] i3 config not found (skipping): {inst_i3_cfg}"))
+    if inst_blocks_cfg.exists():
+        if not _file_contains(inst_blocks_cfg, "markup=pango"):
+            print(warn(f"[installed] i3blocks config missing markup=pango: {inst_blocks_cfg}"))
+            ok_all = False
+        if not _file_contains(inst_blocks_cfg, "command=bash ~/.config/i3blocks/scripts/status.sh"):
+            print(warn(f"[installed] i3blocks config missing bash command: {inst_blocks_cfg}"))
+            ok_all = False
+    else:
+        print(warn(f"[installed] i3blocks config not found (skipping): {inst_blocks_cfg}"))
+    if not inst_status_sh.exists():
+        print(warn(f"[installed] status script not found (skipping): {inst_status_sh}"))
+
+    # 4) Quick runtime checks (best effort).
+    if inst_i3_cfg.exists() and shutil.which("i3"):
+        cp = run(["i3", "-C", "-c", str(inst_i3_cfg)], capture_output=True)
+        if cp.returncode != 0:
+            print(warn("[installed] i3 -C reported config errors"))
+            ok_all = False
+        else:
+            print(ok("[installed] i3 -C config OK"))
+    elif inst_i3_cfg.exists():
+        print(warn("[installed] i3 not found; skipped i3 -C check"))
+
+    if inst_blocks_cfg.exists() and shutil.which("i3blocks"):
+        if shutil.which("timeout") is None:
+            print(warn("[installed] timeout(1) not found; skipped i3blocks runtime check"))
+        else:
+            env = os.environ.copy()
+            env["HOME"] = str(USER_HOME)
+            cp = run(["timeout", "2s", "i3blocks", "-c", str(inst_blocks_cfg)], env=env, capture_output=True)
+            out = (cp.stdout or "") + "\n" + (cp.stderr or "")
+            if "Failed to load configuration file" in out or "Command" in out and "not found" in out:
+                print(warn("[installed] i3blocks produced errors (see ~/.startup_install.log)"))
+                ok_all = False
+            elif '"version":1' in out:
+                print(ok("[installed] i3blocks output looks OK"))
+            else:
+                print(warn("[installed] i3blocks output did not look like i3bar JSON"))
+                ok_all = False
+
+    print(ok("VERIFY PASSED") if ok_all else warn("VERIFY FAILED"))
+    return 0 if ok_all else 1
+
+
+def self_test(startup_dir: Path) -> int:
+    section("🧪 SELF TEST (SAFE)")
+    repo_i3 = startup_dir / "i3"
+    if not repo_i3.exists():
+        print(err("Missing i3/ directory in repo; cannot self-test"))
+        return 1
+
+    ok_all = True
+    with tempfile.TemporaryDirectory(prefix="startup-selftest-") as td:
+        tmp_root = Path(td)
+        tmp_home = tmp_root / "home"
+
+        # Copy into a temp "home" so we test real file moves without touching the system.
+        copies = [
+            (repo_i3 / ".config" / "i3" / "config", tmp_home / ".config" / "i3" / "config"),
+            (repo_i3 / ".config" / "i3blocks", tmp_home / ".config" / "i3blocks"),
+            (repo_i3 / ".config" / "rofi", tmp_home / ".config" / "rofi"),
+            (repo_i3 / ".config" / "picom" / "picom.conf", tmp_home / ".config" / "picom" / "picom.conf"),
+            (repo_i3 / ".config" / "i3" / "scripts" / "terminal-font.sh", tmp_home / ".config" / "i3" / "scripts" / "terminal-font.sh"),
+            (repo_i3 / ".config" / "systemd" / "user" / "battery-monitor.service", tmp_home / ".config" / "systemd" / "user" / "battery-monitor.service"),
+            (repo_i3 / ".local", tmp_home / ".local"),
+        ]
+        for src, dst in copies:
+            if not safe_copy(src, dst, dirs_exist_ok=True):
+                print(warn(f"[self-test] copy failed: {src} -> {dst}"))
+                ok_all = False
+
+        # Basic existence checks.
+        must_exist = [
+            tmp_home / ".config" / "i3" / "config",
+            tmp_home / ".config" / "i3blocks" / "config",
+            tmp_home / ".config" / "i3blocks" / "scripts" / "status.sh",
+            tmp_home / ".config" / "rofi" / "config.rasi",
+            tmp_home / ".config" / "picom" / "picom.conf",
+            tmp_home / ".local" / "bin" / "battery-monitor.sh",
+        ]
+        for p in must_exist:
+            if not p.exists():
+                print(warn(f"[self-test] missing after copy: {p}"))
+                ok_all = False
+
+        # Content checks.
+        i3_cfg = tmp_home / ".config" / "i3" / "config"
+        blocks_cfg = tmp_home / ".config" / "i3blocks" / "config"
+        want = 'status_command /bin/sh -c "i3blocks -c ~/.config/i3blocks/config"'
+        if i3_cfg.exists() and not _file_contains(i3_cfg, want):
+            print(warn("[self-test] i3 config missing expected status_command wrapper"))
+            ok_all = False
+        if blocks_cfg.exists() and not _file_contains(blocks_cfg, "markup=pango"):
+            print(warn("[self-test] i3blocks config missing markup=pango"))
+            ok_all = False
+
+        # Runtime checks against the temp home (best effort).
+        if shutil.which("i3") and i3_cfg.exists():
+            cp = run(["i3", "-C", "-c", str(i3_cfg)], capture_output=True)
+            if cp.returncode != 0:
+                print(warn("[self-test] i3 -C reported config errors"))
+                ok_all = False
+            else:
+                print(ok("[self-test] i3 -C config OK"))
+        else:
+            print(warn("[self-test] i3 not found; skipped i3 -C check"))
+
+        if shutil.which("i3blocks") and blocks_cfg.exists():
+            if shutil.which("timeout") is None:
+                print(warn("[self-test] timeout(1) not found; skipped i3blocks runtime check"))
+            else:
+                env = os.environ.copy()
+                env["HOME"] = str(tmp_home)
+                cp = run(["timeout", "2s", "i3blocks", "-c", str(blocks_cfg)], env=env, capture_output=True)
+                out = (cp.stdout or "") + "\n" + (cp.stderr or "")
+                if "Failed to load configuration file" in out or "Command" in out and "not found" in out:
+                    print(warn("[self-test] i3blocks produced errors"))
+                    ok_all = False
+                elif '"version":1' in out:
+                    print(ok("[self-test] i3blocks output looks OK"))
+                else:
+                    print(warn("[self-test] i3blocks output did not look like i3bar JSON"))
+                    ok_all = False
+        else:
+            print(warn("[self-test] i3blocks not found; skipped i3blocks check"))
+
+    print(ok("SELF-TEST PASSED") if ok_all else warn("SELF-TEST FAILED"))
+    return 0 if ok_all else 1
+
+
 def main() -> None:
     global DRY_RUN
-    DRY_RUN = False
-    require_root()
+    args = sys.argv[1:]
+    if "-h" in args or "--help" in args:
+        print_usage()
+        return
+
+    DRY_RUN = ("--dry-run" in args) or ("-n" in args)
+    run_rollback = ("-r" in args) or ("--rollback" in args)
+    configs_only = "--configs-only" in args
+    run_verify = "--verify" in args
+    run_self_test = "--self-test" in args
+
+    # Only enforce root when we will actually change system state.
+    if run_rollback and not DRY_RUN:
+        require_root()
+    if not run_rollback and not (configs_only or run_verify or run_self_test) and not DRY_RUN:
+        require_root()
 
     startup_dir = detect_or_clone_repo()
     if startup_dir.exists():
         cleanup_python_bytecode(startup_dir)
     header(TARGET_USER, startup_dir)
     load_state()
-    args = sys.argv[1:]
-    run_rollback = "-r" in args
+
+    if run_self_test:
+        sys.exit(self_test(startup_dir))
+    if run_verify:
+        sys.exit(verify(startup_dir))
+
     if run_rollback:
         rollback(startup_dir)
         return
@@ -1450,6 +1667,12 @@ def main() -> None:
         sys.exit(1)
 
     try:
+        if configs_only:
+            copy_configs(startup_dir)
+            make_scripts_executable()
+            print(ok("Configs deployed (configs-only mode)."))
+            return
+
         install_packages()
         copy_configs(startup_dir)
         make_scripts_executable()
@@ -1459,8 +1682,12 @@ def main() -> None:
         optional_apps(startup_dir)
 
         section("⚙️  GRUB & SESSION DEFAULTS")
-        run(["update-grub"], capture_output=True)
-        set_i3_defaults()
+        if DRY_RUN:
+            print(info("[dry-run] update-grub"))
+            print(info("[dry-run] set_i3_defaults"))
+        else:
+            run(["update-grub"], capture_output=True)
+            set_i3_defaults()
 
         print("\n" + "═" * 51)
         print(ok("🎉 SETUP COMPLETED"))
@@ -1468,7 +1695,9 @@ def main() -> None:
         print("Reboot recommended.")
         print("═" * 51)
 
-        if ask_yes_no("Restart now? ", default=False):
+        if DRY_RUN:
+            print(info("[dry-run] skipping reboot prompt"))
+        elif ask_yes_no("Restart now? ", default=False):
             run(["reboot"], capture_output=False)
     except Exception as ex:
         log_line(f"unexpected exception: {ex}")
