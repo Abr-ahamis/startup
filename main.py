@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import sys
+
+# Prevent creation of `__pycache__/` and `.pyc` files when this script runs.
+sys.dont_write_bytecode = True
+
 import os
 import pwd
 import re
 import shutil
 import subprocess
-import sys
 import termios
 import time
 import tty
@@ -140,17 +144,22 @@ def header(target_user: str, startup_dir: Path) -> None:
 # =========================
 TARGET_USER = os.environ.get("SUDO_USER") or os.environ.get("USER", "root")
 try:
-    USER_HOME = Path(pwd.getpwnam(TARGET_USER).pw_dir)
+    _pw = pwd.getpwnam(TARGET_USER)
+    USER_HOME = Path(_pw.pw_dir)
+    TARGET_UID = _pw.pw_uid
+    TARGET_GID = _pw.pw_gid
 except Exception:
     USER_HOME = Path(os.environ.get("HOME", "/root"))
+    TARGET_UID = os.getuid()
+    TARGET_GID = os.getgid()
 
 BACKUP_ROOT = USER_HOME / ".BACKUPDV"
+BACKUP_SESSION_DIR = BACKUP_ROOT / datetime.now().strftime("%Y%m%d-%H%M%S")
+BACKUP_INDEX_PATH = BACKUP_SESSION_DIR / ".index.json"
 LOG_PATH = USER_HOME / ".startup_install.log"
 STATE_PATH = USER_HOME / ".startup_state.json"
-NOW = datetime.now().strftime("%Y%m%d-%H%M%S")
 
 DRY_RUN = False
-BACKUP_ENABLED = False
 STATE: Dict[str, List[str] | bool] = {
     "new_apt_packages": [],
     "optional_installed": [],
@@ -185,6 +194,10 @@ def log_line(msg: str) -> None:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with LOG_PATH.open("a", encoding="utf-8") as f:
             f.write(f"[{datetime.now().isoformat()}] {msg}\n")
+        try:
+            os.chown(LOG_PATH, TARGET_UID, TARGET_GID)
+        except Exception:
+            pass
     except Exception:
         pass
 
@@ -207,6 +220,10 @@ def load_state() -> None:
 def save_state() -> None:
     try:
         STATE_PATH.write_text(json.dumps(STATE, indent=2), encoding="utf-8")
+        try:
+            os.chown(STATE_PATH, TARGET_UID, TARGET_GID)
+        except Exception:
+            pass
     except Exception as ex:
         log_line(f"failed to save state: {ex}")
 
@@ -221,6 +238,82 @@ def ensure_dir(path: Path) -> None:
     if DRY_RUN:
         return
     path.mkdir(parents=True, exist_ok=True)
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.absolute().relative_to(root.absolute())
+        return True
+    except Exception:
+        return False
+
+
+def _chown_user(path: Path) -> None:
+    if DRY_RUN:
+        return
+    try:
+        os.lchown(path, TARGET_UID, TARGET_GID)
+    except Exception:
+        pass
+
+
+def _chown_tree(root: Path) -> None:
+    if DRY_RUN:
+        return
+    try:
+        os.lchown(root, TARGET_UID, TARGET_GID)
+    except Exception:
+        pass
+    if not root.is_dir() or root.is_symlink():
+        return
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        for name in dirnames:
+            try:
+                os.lchown(Path(dirpath) / name, TARGET_UID, TARGET_GID)
+            except Exception:
+                pass
+        for name in filenames:
+            try:
+                os.lchown(Path(dirpath) / name, TARGET_UID, TARGET_GID)
+            except Exception:
+                pass
+
+
+def _fix_user_ownership(path: Path) -> None:
+    if not _is_within(path, USER_HOME):
+        return
+    _chown_tree(path)
+
+
+def ensure_dir_owned(path: Path) -> None:
+    ensure_dir(path)
+    if not _is_within(path, USER_HOME):
+        return
+    cur = path
+    while True:
+        _chown_user(cur)
+        if cur == USER_HOME:
+            break
+        cur = cur.parent
+
+
+def cleanup_python_bytecode(startup_dir: Path) -> None:
+    if DRY_RUN:
+        return
+    try:
+        for pyc in startup_dir.rglob("*.pyc"):
+            try:
+                pyc.unlink()
+            except Exception:
+                pass
+        for d in startup_dir.rglob("__pycache__"):
+            try:
+                if d.is_dir():
+                    shutil.rmtree(d)
+            except Exception:
+                pass
+    except Exception as ex:
+        log_line(f"bytecode cleanup failed in {startup_dir}: {ex}")
 
 
 def require_root() -> None:
@@ -294,27 +387,71 @@ def _fit_line(s: str) -> str:
 
 
 def backup_destination(dst: Path) -> Path:
-    if str(dst).startswith(str(USER_HOME)):
-        rel = dst.relative_to(USER_HOME)
-    else:
-        rel = Path(dst.as_posix().lstrip("/"))
-    return BACKUP_ROOT / rel
+    rel = backup_relative(dst)
+    return BACKUP_SESSION_DIR / rel
 
 
-def backup_existing(dst: Path) -> Optional[Path]:
+def backup_relative(dst: Path) -> Path:
+    abs_dst = dst.absolute()
+    if _is_within(abs_dst, USER_HOME):
+        return abs_dst.relative_to(USER_HOME.absolute())
+    return Path(abs_dst.as_posix().lstrip("/"))
+
+
+def _unique_backup_path(path: Path) -> Path:
+    if not path.exists() and not path.is_symlink():
+        return path
+    for i in range(1, 10_000):
+        cand = path.with_name(f"{path.name}.dup{i}")
+        if not cand.exists() and not cand.is_symlink():
+            return cand
+    # Extremely unlikely; last-resort uniqueness.
+    return path.with_name(f"{path.name}.dup{int(time.time())}")
+
+
+def _write_backup_index(items: Sequence[str]) -> None:
+    if DRY_RUN:
+        return
+    try:
+        ensure_dir_owned(BACKUP_SESSION_DIR)
+        BACKUP_INDEX_PATH.write_text(json.dumps(sorted(set(items)), indent=2), encoding="utf-8")
+        try:
+            os.chown(BACKUP_INDEX_PATH, TARGET_UID, TARGET_GID)
+        except Exception:
+            pass
+    except Exception as ex:
+        log_line(f"failed to write backup index: {ex}")
+
+
+_BACKUP_INDEX: set[str] = set()
+
+
+def backup_existing(dst: Path, *, move: bool = True) -> Optional[Path]:
     if not dst.exists() and not dst.is_symlink():
         return None
-    if not BACKUP_ENABLED:
-        return None
-    target = backup_destination(dst)
-    if target.exists():
-        target = target.parent / f".dup_{NOW}" / target.name
-    ensure_dir(target.parent)
+    rel = backup_relative(dst)
+    _BACKUP_INDEX.add(rel.as_posix())
+
+    ensure_dir_owned(BACKUP_SESSION_DIR)
+    target = _unique_backup_path(backup_destination(dst))
+    ensure_dir_owned(target.parent)
     if DRY_RUN:
-        print(info(f"[dry-run] backup {dst} -> {target}"))
+        mode = "move" if move else "copy"
+        print(info(f"[dry-run] backup({mode}) {dst} -> {target}"))
+        _write_backup_index(list(_BACKUP_INDEX))
         return target
     try:
-        shutil.move(str(dst), str(target))
+        if move:
+            shutil.move(str(dst), str(target))
+        else:
+            if dst.is_symlink():
+                link_target = os.readlink(dst)
+                target.symlink_to(link_target)
+            elif dst.is_dir():
+                shutil.copytree(dst, target, symlinks=True)
+            else:
+                shutil.copy2(dst, target)
+        _write_backup_index(list(_BACKUP_INDEX))
         return target
     except Exception as ex:
         log_line(f"backup failed for {dst}: {ex}")
@@ -322,19 +459,26 @@ def backup_existing(dst: Path) -> Optional[Path]:
 
 
 def safe_copy(src: Path, dst: Path, dirs_exist_ok: bool = False) -> bool:
-    if not src.exists():
+    if not src.exists() and not src.is_symlink():
         log_line(f"missing source: {src}")
         return False
-    ensure_dir(dst.parent)
+    if not ensure_dir_safe(dst.parent):
+        return False
     existed_before = dst.exists() or dst.is_symlink()
     if existed_before:
-        backup_existing(dst)
+        if backup_existing(dst, move=True) is None:
+            log_line(f"refusing to overwrite {dst}; backup failed")
+            return False
     try:
         if DRY_RUN:
             print(info(f"[dry-run] copy {src} -> {dst}"))
             return True
-        if src.is_dir():
-            shutil.copytree(src, dst, dirs_exist_ok=dirs_exist_ok)
+        if src.is_symlink():
+            dst.symlink_to(os.readlink(src))
+        elif src.is_dir():
+            # Intentionally replace the destination directory on conflict (backed up above).
+            # This avoids copytree failing to overwrite existing symlinks.
+            shutil.copytree(src, dst, symlinks=True)
         else:
             tmp = dst.with_name(dst.name + ".tmp")
             shutil.copy2(src, tmp)
@@ -342,9 +486,47 @@ def safe_copy(src: Path, dst: Path, dirs_exist_ok: bool = False) -> bool:
         _state_add("copied_targets", str(dst))
         if not existed_before:
             _state_add("created_targets", str(dst))
+        _fix_user_ownership(dst)
         return True
     except Exception as ex:
         log_line(f"copy failed {src} -> {dst}: {ex}")
+        return False
+
+
+def ensure_dir_safe(path: Path) -> bool:
+    if path.exists() or path.is_symlink():
+        if path.is_dir() and not path.is_symlink():
+            return True
+        if backup_existing(path, move=True) is None:
+            log_line(f"refusing to replace {path}; backup failed")
+            return False
+    try:
+        ensure_dir_owned(path)
+        return True
+    except Exception as ex:
+        log_line(f"ensure_dir failed {path}: {ex}")
+        return False
+
+
+def safe_move(src: Path, dst: Path) -> bool:
+    if not src.exists() and not src.is_symlink():
+        log_line(f"missing source: {src}")
+        return False
+    if not ensure_dir_safe(dst.parent):
+        return False
+    if dst.exists() or dst.is_symlink():
+        if backup_existing(dst, move=True) is None:
+            log_line(f"refusing to overwrite {dst}; backup failed")
+            return False
+    try:
+        if DRY_RUN:
+            print(info(f"[dry-run] move {src} -> {dst}"))
+            return True
+        shutil.move(str(src), str(dst))
+        _fix_user_ownership(dst)
+        return True
+    except Exception as ex:
+        log_line(f"move failed {src} -> {dst}: {ex}")
         return False
 
 
@@ -492,6 +674,29 @@ def copy_configs(startup_dir: Path) -> None:
     s3 = safe_copy(repo_i3 / ".config" / "rofi", USER_HOME / ".config" / "rofi", dirs_exist_ok=True)
     s4 = safe_copy(repo_i3 / ".config" / "picom" / "picom.conf", USER_HOME / ".config" / "picom" / "picom.conf")
 
+    # Some repo variants have a different rofi launcher layout. If a launcher symlink is present
+    # but dangling, try to repoint it to the new location so the copied config remains usable.
+    if s3 and not DRY_RUN:
+        rofi_root = USER_HOME / ".config" / "rofi"
+        scripts_dir = rofi_root / "scripts"
+        launcher_link = scripts_dir / "launcher"
+        if scripts_dir.exists() and launcher_link.is_symlink() and not launcher_link.exists():
+            candidates = [
+                Path("../launchers/type-1/launcher.sh"),
+                Path("../launchers/launcher.sh"),
+            ]
+            for rel in candidates:
+                if (scripts_dir / rel).exists():
+                    try:
+                        if backup_existing(launcher_link) is None:
+                            log_line(f"refusing to modify {launcher_link}; backup failed")
+                            break
+                        launcher_link.symlink_to(rel)
+                        _fix_user_ownership(launcher_link)
+                    except Exception as ex:
+                        log_line(f"failed to repair rofi launcher symlink {launcher_link}: {ex}")
+                    break
+
     safe_copy(
         repo_i3 / ".config" / "i3" / "scripts" / "terminal-font.sh",
         USER_HOME / ".config" / "i3" / "scripts" / "terminal-font.sh",
@@ -499,24 +704,19 @@ def copy_configs(startup_dir: Path) -> None:
 
     src_bin = repo_i3 / ".local" / "bin"
     dst_bin = USER_HOME / ".local" / "bin"
-    ensure_dir(dst_bin)
+    ensure_dir_owned(dst_bin)
     if src_bin.exists():
         for item in sorted(src_bin.iterdir()):
             safe_copy(item, dst_bin / item.name)
 
     src_fonts = repo_i3 / ".local" / "share" / "fonts"
     dst_fonts = USER_HOME / ".local" / "share" / "fonts"
-    ensure_dir(dst_fonts)
+    ensure_dir_owned(dst_fonts)
     font_count = 0
     if src_fonts.exists():
         for item in sorted(src_fonts.iterdir()):
             if safe_copy(item, dst_fonts / item.name):
                 font_count += 1
-
-    safe_copy(
-        repo_i3 / "usr" / "share" / "rofi" / "themes" / "Adapta-Nokto.rasi",
-        Path("/usr/share/rofi/themes/Adapta-Nokto.rasi"),
-    )
 
     print(ok("[✔] i3 config updated") if s1 else warn("[✖] i3 config update failed"))
     print(ok("[✔] i3blocks config updated") if s2 else warn("[✖] i3blocks config update failed"))
@@ -535,7 +735,7 @@ def copy_wallpapers(startup_dir: Path) -> None:
         return
 
     pics = USER_HOME / "Pictures"
-    ensure_dir(pics)
+    ensure_dir_owned(pics)
     for src in sources:
         safe_copy(src, pics / src.name)
 
@@ -547,19 +747,8 @@ def copy_wallpapers(startup_dir: Path) -> None:
         dst = kali_dir / target_name
         src = sources[cycle_i % len(sources)]
         cycle_i += 1
-        if dst.exists() or dst.is_symlink():
-            backup_existing(dst)
-        try:
-            if DRY_RUN:
-                print(info(f"[dry-run] replace {dst} <- {src}"))
-                replaced += 1
-                continue
-            ensure_dir(dst.parent)
-            shutil.copy2(src, dst)
-            _state_add("copied_targets", str(dst))
+        if safe_copy(src, dst):
             replaced += 1
-        except Exception as ex:
-            log_line(f"wallpaper replace failed {dst}: {ex}")
 
     src_i3 = repo_wall / "wallpaper-1.jpg"
     i3_wall = kali_dir / "wallpaper-1.jpg"
@@ -632,17 +821,11 @@ def apply_grub_theme(startup_dir: Path) -> None:
     if not src.exists():
         print(warn("grub source missing; skipping"))
         return
-    try:
-        if dst_boot.exists():
-            backup_existing(dst_boot)
-        if dst_usr.exists():
-            backup_existing(dst_usr)
-        if not DRY_RUN:
-            shutil.copytree(src, dst_boot, dirs_exist_ok=True)
-            shutil.copytree(src, dst_usr, dirs_exist_ok=True)
+    ok_boot = safe_copy(src, dst_boot, dirs_exist_ok=True)
+    ok_usr = safe_copy(src, dst_usr, dirs_exist_ok=True)
+    if ok_boot and ok_usr:
         print(ok("grub setuped"))
-    except Exception as ex:
-        log_line(f"grub theme copy failed: {ex}")
+    else:
         print(warn("grub copy failed; continuing"))
 
     grub_cfg = Path("/boot/grub/grub.cfg")
@@ -651,7 +834,9 @@ def apply_grub_theme(startup_dir: Path) -> None:
         return
 
     try:
-        backup_existing(grub_cfg)
+        if backup_existing(grub_cfg, move=False) is None:
+            print(warn("grub.cfg backup failed; skipping grub.cfg edits"))
+            return
         if DRY_RUN:
             print(info("[dry-run] set timeout=2 and default windows entry in grub.cfg"))
             return
@@ -794,7 +979,10 @@ def optional_apps(startup_dir: Path) -> None:
         if DRY_RUN:
             print(info(f"[dry-run] bash {script}"))
             continue
-        cp = run(["bash", str(script)], capture_output=False)
+        env = os.environ.copy()
+        env["STARTUP_TARGET_USER"] = TARGET_USER
+        env["STARTUP_TARGET_HOME"] = str(USER_HOME)
+        cp = run(["bash", str(script)], capture_output=False, env=env)
         if cp.returncode == 0:
             print(ok(f"[✔] {app} installed"))
             _state_add("optional_installed", app)
@@ -811,15 +999,17 @@ def set_i3_defaults() -> None:
     section("🖥️  I3 DEFAULT SESSION SETUP")
     content = "exec i3\n"
     for p in (USER_HOME / ".xinitrc", USER_HOME / ".xsession"):
-        if p.exists():
-            backup_existing(p)
+        if p.exists() and backup_existing(p) is None:
+            log_line(f"refusing to overwrite {p}; backup failed")
+            continue
         if DRY_RUN:
             print(info(f"[dry-run] write {p}"))
             continue
         try:
-            ensure_dir(p.parent)
+            ensure_dir_owned(p.parent)
             p.write_text(content, encoding="utf-8")
             p.chmod(0o644)
+            _fix_user_ownership(p)
         except Exception as ex:
             log_line(f"write failed {p}: {ex}")
 
@@ -834,8 +1024,9 @@ def set_i3_defaults() -> None:
                 )
             else:
                 txt += "\nXSession=i3\n"
-            backup_existing(acct)
-            if not DRY_RUN:
+            if backup_existing(acct) is None:
+                log_line(f"refusing to overwrite {acct}; backup failed")
+            elif not DRY_RUN:
                 acct.write_text(txt, encoding="utf-8")
         except Exception as ex:
             log_line(f"AccountsService update failed: {ex}")
@@ -843,8 +1034,9 @@ def set_i3_defaults() -> None:
     xsession_file = Path("/etc/X11/Xsession.d/99-i3-default")
     gdm_conf = Path("/etc/gdm3/custom.conf")
     try:
-        backup_existing(xsession_file)
-        if not DRY_RUN:
+        if xsession_file.exists() and backup_existing(xsession_file) is None:
+            log_line(f"refusing to overwrite {xsession_file}; backup failed")
+        elif not DRY_RUN:
             ensure_dir(xsession_file.parent)
             xsession_file.write_text("exec i3\n", encoding="utf-8")
             xsession_file.chmod(0o644)
@@ -852,14 +1044,16 @@ def set_i3_defaults() -> None:
         log_line(f"xsession default failed: {ex}")
 
     try:
+        content0 = ""
+        backup_ok = True
         if gdm_conf.exists():
-            backup_existing(gdm_conf)
-        if not DRY_RUN:
-            if gdm_conf.exists():
-                content0 = gdm_conf.read_text(encoding="utf-8", errors="ignore")
-            else:
+            content0 = gdm_conf.read_text(encoding="utf-8", errors="ignore")
+            backup_ok = backup_existing(gdm_conf) is not None
+            if not backup_ok:
+                log_line(f"refusing to overwrite {gdm_conf}; backup failed")
+        if not DRY_RUN and backup_ok:
+            if not gdm_conf.exists():
                 ensure_dir(gdm_conf.parent)
-                content0 = ""
             if "DefaultSession=i3.desktop" not in content0:
                 content0 += "\n[daemon]\nDefaultSession=i3.desktop\n"
             gdm_conf.write_text(content0, encoding="utf-8")
@@ -1113,30 +1307,59 @@ def restore_from_backup() -> None:
     if not BACKUP_ROOT.exists():
         print(warn("Backup directory not found; nothing to restore"))
         return
-    entries: List[Path] = []
-    for p in BACKUP_ROOT.rglob("*"):
-        entries.append(p)
-    all_paths = set(entries)
-    roots: List[Path] = []
-    for p in sorted(entries, key=lambda x: len(x.parts)):
-        if any(parent in all_paths for parent in p.parents if parent != BACKUP_ROOT):
-            continue
-        roots.append(p)
+
+    sessions: List[Path] = []
+    for p in BACKUP_ROOT.iterdir():
+        if p.is_dir() and re.fullmatch(r"\d{8}-\d{6}", p.name):
+            sessions.append(p)
+    restore_root = sorted(sessions, key=lambda p: p.name)[-1] if sessions else BACKUP_ROOT
+    if restore_root != BACKUP_ROOT:
+        print(info(f"Restoring from backup session: {restore_root.name}"))
+
     restored = 0
-    for b in roots:
-        rel = b.relative_to(BACKUP_ROOT)
-        dst = backup_rel_to_real(rel)
+    index_path = restore_root / ".index.json"
+    if index_path.exists():
         try:
-            if DRY_RUN:
-                print(info(f"[dry-run] restore {b} -> {dst}"))
-                restored += 1
-                continue
-            ensure_dir(dst.parent)
-            remove_path(dst)
-            shutil.move(str(b), str(dst))
-            restored += 1
+            rels = json.loads(index_path.read_text(encoding="utf-8"))
         except Exception as ex:
-            log_line(f"restore failed {b} -> {dst}: {ex}")
+            log_line(f"failed to read backup index {index_path}: {ex}")
+            rels = []
+        if isinstance(rels, list):
+            # Deepest-first avoids child path conflicts if the index ever contains nested entries.
+            rel_paths = sorted({str(x) for x in rels if isinstance(x, str)}, key=lambda s: len(Path(s).parts), reverse=True)
+            for rel_s in rel_paths:
+                b = restore_root / rel_s
+                if not b.exists() and not b.is_symlink():
+                    continue
+                dst = backup_rel_to_real(Path(rel_s))
+                if safe_move(b, dst):
+                    restored += 1
+            print(ok(f"Restored backup items: {restored}"))
+            return
+
+    # Legacy/fallback restore: move backed-up files/symlinks back without replacing whole parent directories.
+    for dirpath, dirnames, filenames in os.walk(restore_root, topdown=False, followlinks=False):
+        here = Path(dirpath)
+        for name in filenames:
+            b = here / name
+            rel = b.relative_to(restore_root)
+            if rel.as_posix() == ".index.json":
+                continue
+            dst = backup_rel_to_real(rel)
+            if safe_move(b, dst):
+                restored += 1
+        for name in list(dirnames):
+            b = here / name
+            if b.is_symlink():
+                rel = b.relative_to(restore_root)
+                dst = backup_rel_to_real(rel)
+                if safe_move(b, dst):
+                    restored += 1
+        if here != restore_root:
+            try:
+                here.rmdir()
+            except Exception:
+                pass
     print(ok(f"Restored backup items: {restored}"))
 
 
@@ -1198,17 +1421,11 @@ def make_scripts_executable() -> None:
 
 
 def init_backup_mode() -> None:
-    global BACKUP_ENABLED
-    # User rule: if ~/.BACKUPDV already exists, skip backup moves.
-    if BACKUP_ROOT.exists():
-        BACKUP_ENABLED = False
-        print(info(f"Backup folder exists ({BACKUP_ROOT}); backup move phase will be skipped."))
-        return
-    BACKUP_ENABLED = True
     if DRY_RUN:
-        print(info(f"[dry-run] would create backup root: {BACKUP_ROOT}"))
+        print(info(f"[dry-run] backups enabled: {BACKUP_SESSION_DIR}"))
         return
-    ensure_dir(BACKUP_ROOT)
+    ensure_dir_owned(BACKUP_SESSION_DIR)
+    print(info(f"Backups enabled: {BACKUP_SESSION_DIR}"))
 
 
 def main() -> None:
@@ -1217,6 +1434,8 @@ def main() -> None:
     require_root()
 
     startup_dir = detect_or_clone_repo()
+    if startup_dir.exists():
+        cleanup_python_bytecode(startup_dir)
     header(TARGET_USER, startup_dir)
     load_state()
     args = sys.argv[1:]

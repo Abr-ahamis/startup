@@ -12,9 +12,48 @@ RESET='\033[0m'
 
 echo -e "${CYAN}🔍 Preparing to install VirtualBox on Kali Linux...${RESET}"
 
+TARGET_USER="${STARTUP_TARGET_USER:-${SUDO_USER:-$USER}}"
+HOME_DIR="${STARTUP_TARGET_HOME:-}"
+if [ -z "$HOME_DIR" ]; then
+    HOME_DIR="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6 || true)"
+fi
+if [ -z "$HOME_DIR" ]; then
+    HOME_DIR="$HOME"
+fi
+
+BACKUP_TS="$(date +%Y%m%d-%H%M%S)"
+BACKUP_SESSION="${HOME_DIR}/.BACKUPDV/${BACKUP_TS}"
+
+backup_conflict() {
+    local path="$1"
+    if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+        return 0
+    fi
+
+    local rel=""
+    if [[ "$path" == "$HOME_DIR/"* ]]; then
+        rel="${path#${HOME_DIR}/}"
+    else
+        rel="${path#/}"
+    fi
+
+    local dest="${BACKUP_SESSION}/${rel}"
+    sudo mkdir -p "$(dirname "$dest")"
+
+    local base="$dest"
+    local i=0
+    while [ -e "$dest" ] || [ -L "$dest" ]; do
+        i=$((i + 1))
+        dest="${base}.dup${i}"
+    done
+
+    echo -e "${CYAN}🗄️  Backing up conflict: ${path} -> ${dest}${RESET}"
+    sudo mv -- "$path" "$dest"
+}
+
 # === Step 1: Remove old VirtualBox repo ===
 echo -e "${YELLOW}🧹 Removing any existing VirtualBox repository...${RESET}"
-sudo rm -f /etc/apt/sources.list.d/virtualbox.list
+backup_conflict /etc/apt/sources.list.d/virtualbox.list
 
 # === Step 2: Add correct Bookworm repo ===
 echo -e "${CYAN}🔗 Adding the correct VirtualBox repository (Debian Bookworm)...${RESET}"
@@ -23,6 +62,7 @@ echo "deb [signed-by=/usr/share/keyrings/vbox-archive-keyring.gpg] https://downl
 
 # === Step 3: Add VirtualBox GPG key ===
 echo -e "${CYAN}🔑 Downloading and adding VirtualBox GPG key...${RESET}"
+backup_conflict /usr/share/keyrings/vbox-archive-keyring.gpg
 wget -q https://www.virtualbox.org/download/oracle_vbox_2016.asc -O- \
   | gpg --dearmor \
   | sudo tee /usr/share/keyrings/vbox-archive-keyring.gpg > /dev/null
@@ -60,11 +100,11 @@ else
 fi
 
 # === Step 9: Add user to vboxusers ===
-if groups "$USER" | grep -qw "vboxusers"; then
-    echo -e "${GREEN}👤 User '$USER' already in vboxusers group.${RESET}"
+if id -nG "$TARGET_USER" | grep -qw "vboxusers"; then
+    echo -e "${GREEN}👤 User '$TARGET_USER' already in vboxusers group.${RESET}"
 else
-    echo -e "${CYAN}➕ Adding user '$USER' to vboxusers group...${RESET}"
-    sudo usermod -aG vboxusers "$USER"
+    echo -e "${CYAN}➕ Adding user '$TARGET_USER' to vboxusers group...${RESET}"
+    sudo usermod -aG vboxusers "$TARGET_USER"
     echo -e "${GREEN}✅ Added successfully. You may need to log out and back in.${RESET}"
 fi
 

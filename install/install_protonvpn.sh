@@ -5,4 +5,4 @@ wget -q https://repo.protonvpn.com/debian/dists/stable/main/binary-all/protonvpn
 sudo dpkg -i /tmp/protonvpn.deb 
 sudo apt update
 sudo apt install -y proton-vpn-gnome-desktop libayatana-appindicator3-1 gir1.2-ayatanaappindicator3-0.1 gnome-shell-extension-appindicator
-nohup protonvpn-app >/dev/null 2>&1 
+nohup protonvpn-app >/dev/null 2>&1 &

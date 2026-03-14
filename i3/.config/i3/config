@@ -67,7 +67,7 @@ bindsym $mod+Shift+n exec gnome-text-editor
 # 6. Lock Screen and powermenu
 # ---------------------------
 bindsym $mod+shift+x exec i3lock --color "#2f343f"
-bindsym $mod+Shift+p exec --no-startup-id /home/$USER/.local/bin/powermenu
+bindsym $mod+Shift+p exec --no-startup-id /home/$USER/.config/rofi/powermenu/type-1/powermenu.sh
 
 # ---------------------------
 # 6. Program Launcher
