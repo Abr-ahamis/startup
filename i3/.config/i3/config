@@ -1,153 +1,118 @@
-set $mod Mod4
+# =========================================================
+# i3 Window Manager Configuration
+# =========================================================
 
-# Font for window titles. Will also be used by the bar unless a different font
+# ---------------------------
+# 1. Core Settings
+# ---------------------------
+set $mod Mod4
 font pango:Font Awesome 7 Free, Font Awesome 7 Brands, DejaVu Sans Mono 7
 
-# Start XDG autostart .desktop files using dex. See also
+# Mouse behavior
+floating_modifier $mod
+tiling_drag modifier titlebar
+
+# ---------------------------
+# 2. Autostart Programs
+# ---------------------------
 exec --no-startup-id dex --autostart --environment i3
-
-# screen before suspend. Use loginctl lock-session to lock your screen.
 exec --no-startup-id xss-lock --transfer-sleep-lock -- i3lock --nofork
-
-# remove the bar in terminal (run once on startup)
 exec_always --no-startup-id ~/.config/i3/scripts/terminal-font.sh
+exec --no-startup-id nm-applet
+exec --no-startup-id redshift -O 4500
+exec --no-startup-id feh --bg-scale /usr/share/backgrounds/kali/wallpaper-1.jpg
+exec --no-startup-id picom --config ~/.config/picom/picom.conf
 
-# ------------------------------------------------------------
-# i3 Gaps Configuration
-# ------------------------------------------------------------
-
-# Inner gaps for all windows (space between windows)
+# ---------------------------
+# 3. Window Gaps
+# ---------------------------
 gaps inner 2px
-
-# Outer gaps for all windows (space between screen edges)
 gaps outer 2px
-# You can also use specific directions:
-# gaps horizontal 10px
-# gaps vertical 10px
 gaps top 1px
 gaps left 1px
 gaps bottom 1px
 gaps right 1px
-
-# Workspace-specific gaps
-# Example for workspace 1:
-#workspace 1 gaps inner 15px
-#workspace 1 gaps outer 20px
-
-# Enable Smart Gaps:
-#   - 'on' removes gaps when only one window is present
-#   - 'inverse_outer' keeps outer gaps only when one window is present
 smart_gaps off
 
-# Nightlight 
-exec --no-startup-id redshift -O 4500
-
-# Night light ON (warm)
+# ---------------------------
+# 4. Screen & System Controls
+# ---------------------------
+# Night Light
 bindsym Mod1+F3 exec redshift -O 3500
-
-# Night light ON (medium)
 bindsym Mod1+F2 exec redshift -O 4500
-
-# Night light OFF
 bindsym Mod1+F1 exec redshift -x
 
-
-
-
-# and nm-applet is a desktop environment-independent system tray GUI for it.
-exec --no-startup-id nm-applet
-bindsym $mod+Shift+p exec --no-startup-id /home/$USER/.local/bin/powermenu
-
-# Use pactl to adjust volume in PulseAudio.
-bindsym Mod1+F7 exec pactl set-sink-volume @DEFAULT_SINK@ +5%   # Volume up
-bindsym Mod1+F6 exec pactl set-sink-volume @DEFAULT_SINK@ -5%   # Volume down
+# Volume
+bindsym Mod1+F7 exec pactl set-sink-volume @DEFAULT_SINK@ +5%
+bindsym Mod1+F6 exec pactl set-sink-volume @DEFAULT_SINK@ -5%
 bindsym Mod1+F8 exec pactl set-sink-mute @DEFAULT_SINK@ toggle
 
-# Screen brightness controls
+# Brightness
 bindsym Mod1+F9  exec brightnessctl --device=intel_backlight set 2%-
 bindsym Mod1+F10 exec brightnessctl --device=intel_backlight set +2%
 
-# Use Mouse+$mod to drag floating windows to their wanted position
-floating_modifier $mod
-
-# or left-clicking anywhere into the window while holding the floating modifier.
-tiling_drag modifier titlebar
-
-# start a terminal
+# ---------------------------
+# 5. Applications
+# ---------------------------
 bindsym $mod+Return exec i3-sensible-terminal
-
-# apps
-bindsym Mod1+Shift+e exec nautilus
-bindsym Mod1+Shift+f exec firefox
-bindsym Mod1+Shift+b exec brave-browser
-bindsym Mod1+Shift+T exec /opt/Telegram/./Telegram
-
-# flameshot
-bindsym Mod1+Shift+s exec flameshot gui
+bindsym $mod+Shift+e exec nautilus
+bindsym $mod+Shift+f exec firefox
+bindsym $mod+Shift+b exec brave-browser
+bindsym $mod+Shift+T exec /opt/Telegram/./Telegram
+bindsym $mod+Shift+s exec flameshot gui
+bindsym $mod+Shift+n exec gnome-text-editor
 
 
-# kill focused window
-bindsym $mod+Shift+q kill
+# ---------------------------
+# 6. Lock Screen and powermenu
+# ---------------------------
+bindsym $mod+shift+x exec i3lock --color "#2f343f"
+bindsym $mod+Shift+p exec --no-startup-id /home/$USER/.local/bin/powermenu
 
-# start dmenu (a program launcher)
+# ---------------------------
+# 6. Program Launcher
+# ---------------------------
 bindsym $mod+d exec rofi -show drun
 bindsym $mod+Shift+d exec rofi -show run
 
-# change focus
-bindsym $mod+j focus left
-bindsym $mod+k focus down
-bindsym $mod+l focus up
-bindsym $mod+semicolon focus right
+# ---------------------------
+# 7. Window Controls
+# ---------------------------
+bindsym $mod+Shift+q kill
+bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space focus mode_toggle
 
-# alternatively, you can use the cursor keys:
+# ---------------------------
+# 8. Window Navigation
+# ---------------------------
 bindsym $mod+Left focus left
 bindsym $mod+Down focus down
 bindsym $mod+Up focus up
 bindsym $mod+Right focus right
 
-# move focused window
-bindsym $mod+Shift+j move left
-bindsym $mod+Shift+k move down
-bindsym $mod+Shift+l move up
-bindsym $mod+Shift+semicolon move right
-
-# alternatively, you can use the cursor keys:
+# ---------------------------
+# 9. Move Windows
+# ---------------------------
 bindsym $mod+Shift+Left move left
 bindsym $mod+Shift+Down move down
 bindsym $mod+Shift+Up move up
 bindsym $mod+Shift+Right move right
 
-# split in horizontal orientation
-bindsym $mod+h split h
+# ---------------------------
+# 10. Layout Controls
+# ---------------------------
+bindsym $mod+w split h
+bindsym $mod+s split v
 
-# split in vertical orientation
-bindsym $mod+v split v
-
-# enter fullscreen mode for the focused container
-bindsym $mod+f fullscreen toggle
-
-# change container layout (stacked, tabbed, toggle split)
-bindsym $mod+s layout stacking
-bindsym $mod+w layout tabbed
-bindsym $mod+e layout toggle split
-
-# toggle tiling / floating
-bindsym $mod+Shift+space floating toggle
-
-# change focus between tiling / floating windows
-bindsym $mod+space focus mode_toggle
-
-# focus the parent container
-bindsym $mod+a focus parent
-
-# focus the child container
-#bindsym $mod+d focus child
-
-# No borders for all windows
+# ---------------------------
+# 11. Window Borders
+# ---------------------------
 for_window [class=".*"] border none
 
-# Define names for default workspaces for which we configure key bindings later on.
-# We use variables to avoid repeating the names in multiple places.
+# ---------------------------
+# 12. Workspaces
+# ---------------------------
 set $ws1 "1:  "
 set $ws2 "2:  "
 set $ws3 "3:  "
@@ -159,7 +124,7 @@ set $ws8 "8:"
 set $ws9 "9:"
 set $ws10 "10:"
 
-# switch to workspace (fixed: use workspace $wsX, not workspace number with a string)
+# Switch workspace
 bindsym $mod+1 workspace $ws1
 bindsym $mod+2 workspace $ws2
 bindsym $mod+3 workspace $ws3
@@ -171,7 +136,7 @@ bindsym $mod+8 workspace $ws8
 bindsym $mod+9 workspace $ws9
 bindsym $mod+0 workspace $ws10
 
-# move focused container to workspace (fixed same as above)
+# Move window to workspace
 bindsym $mod+Shift+1 move container to workspace $ws1
 bindsym $mod+Shift+2 move container to workspace $ws2
 bindsym $mod+Shift+3 move container to workspace $ws3
@@ -183,75 +148,70 @@ bindsym $mod+Shift+8 move container to workspace $ws8
 bindsym $mod+Shift+9 move container to workspace $ws9
 bindsym $mod+Shift+0 move container to workspace $ws10
 
-# assigning app to workspace only open in one workspace only  
-# assign [class="org.gnome.Nautilus"] $ws10
-assign [class="Brave-browser-nightly"] $ws2
+# Assign app to workspace
+assign [class="Brave-browser-nightly"] $ws1
 focus_on_window_activation smart
 
-# reload the configuration file
+# ---------------------------
+# 13. i3 System Controls
+# ---------------------------
 bindsym $mod+Shift+c reload
-# restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+Shift+r restart
-# exit i3 (logs you out of your X session)
-bindsym $mod+Shift+e exec "i3-nagbar -t warning -m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' -B 'Yes, exit i3' 'i3-msg exit'"
+bindsym $mod+Mod1+Shift+e exec "i3-nagbar -t warning \
+-m 'You pressed the exit shortcut. Do you really want to exit i3? This will end your X session.' \
+-B 'Yes, exit i3' 'i3-msg exit'"
 
-# resize window (you can also use the mouse for that)
+# ---------------------------
+# 14. Resize Mode
+# ---------------------------
 mode "resize" {
-        bindsym j resize shrink width 2 px or 2 ppt
-        bindsym k resize grow height 2 px or 2 ppt
-        bindsym l resize shrink height 2 px or 2 ppt
-        bindsym semicolon resize grow width 2 px or 2 ppt
+    bindsym j resize shrink width 2 px or 2 ppt
+    bindsym k resize grow height 2 px or 2 ppt
+    bindsym l resize shrink height 2 px or 2 ppt
+    bindsym semicolon resize grow width 2 px or 2 ppt
 
-        # same bindings, but for the arrow keys
-        bindsym Left resize shrink width 2 px or 2 ppt
-        bindsym Down resize grow height 2 px or 2 ppt
-        bindsym Up resize shrink height 2 px or 2 ppt
-        bindsym Right resize grow width 2 px or 2 ppt
+    bindsym Left resize shrink width 2 px or 2 ppt
+    bindsym Down resize grow height 2 px or 2 ppt
+    bindsym Up resize shrink height 2 px or 2 ppt
+    bindsym Right resize grow width 2 px or 2 ppt
 
-        # back to normal: Enter or Escape or $mod+r
-        bindsym Return mode "default"
-        bindsym Escape mode "default"
-        bindsym $mod+r mode "default"
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+r mode "default"
 }
 bindsym $mod+r mode "resize"
 
-# color sets
-set $bg-color 	         #2f343f
-set $inactive-bg-color   #2f343f
-set $text-color          #f3f4f5
+# ---------------------------
+# 15. Colors
+# ---------------------------
+set $bg-color #2f343f
+set $inactive-bg-color #2f343f
+set $text-color #f3f4f5
 set $inactive-text-color #676E7D
-set $urgent-bg-color     #E53935
+set $urgent-bg-color #E53935
 
-# Start i3bar to display a workspace bar (plus the system information i3status finds out, if available)
+# ---------------------------
+# 16. i3bar
+# ---------------------------
 bar {
-        position top
-        status_command i3blocks -c ~/.config/i3blocks/config
-        colors {
-		background $bg-color
-	    	separator #757575
-		#                  border             background         text
-		focused_workspace  $bg-color          $bg-color          $text-color
-		inactive_workspace $inactive-bg-color $inactive-bg-color $inactive-text-color
-		urgent_workspace   $urgent-bg-color   $urgent-bg-color   $text-color
-	}
-
-        font pango:JetBrainsMono Nerd Font 8, Material Icons 6
+    position top
+    status_command i3blocks -c ~/.config/i3blocks/config
+    colors {
+        background $bg-color
+        separator #757575
+        focused_workspace  $bg-color          $bg-color          $text-color
+        inactive_workspace $inactive-bg-color $inactive-bg-color $inactive-text-color
+        urgent_workspace   $urgent-bg-color   $urgent-bg-color   $text-color
+    }
+    font pango:JetBrainsMono Nerd Font 8, Material Icons 6
 }
 
-# window colors
-#                       border              background         text                 indicator
+# ---------------------------
+# 17. Window Colors
+# ---------------------------
 client.focused          $bg-color           $bg-color          $text-color          #00ff00
 client.unfocused        $inactive-bg-color $inactive-bg-color $inactive-text-color #00ff00
 client.focused_inactive $inactive-bg-color $inactive-bg-color $inactive-text-color #00ff00
 client.urgent           $urgent-bg-color    $urgent-bg-color   $text-color          #00ff00
 
-bindsym $mod+shift+x exec i3lock --color 475263
 
-# autostart 
-#exec firefox
-
-# wallpaper background (start once)
-exec --no-startup-id feh --bg-scale /usr/share/backgrounds/kali/wallpaper-1.jpg
-
-# start picom once
-exec --no-startup-id picom --config ~/.config/picom/picom.conf
