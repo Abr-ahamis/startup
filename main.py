@@ -40,6 +40,7 @@ APT_PACKAGES = [
     "xfce4-power-manager",
     "i3lock",
     "xss-lock",
+    "flameshot",
     "pulseaudio-utils",
     "brightnessctl",
     "feh",
