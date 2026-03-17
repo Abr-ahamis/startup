@@ -65,8 +65,7 @@ default_iface() {
 
 vpn_iface_active() {
   if [[ -d /sys/class/net/tun0 ]]; then
-    state=$(cat /sys/class/net/tun0/operstate 2>/dev/null || echo "down")
-    [[ "$state" == "up" ]]
+    ip -4 addr show dev tun0 2>/dev/null | awk '/inet /{found=1} END{exit !found}'
   else
     return 1
   fi
@@ -184,13 +183,12 @@ while true; do
     smooth_tx_bps["$iface"]="$smooth_tx"
   done
 
+  vpn_active=0
   chosen_iface=""
   def_iface=$(default_iface)
-  if vpn_iface_active; then
-    tun0_delta=$(( ${delta_rx[tun0]:-0} + ${delta_tx[tun0]:-0} ))
-    if [[ "$def_iface" == "tun0" || "$tun0_delta" -gt 0 ]]; then
-      chosen_iface="tun0"
-    fi
+  if vpn_iface_active && [[ -n "${cur_rx[tun0]+set}" ]]; then
+    vpn_active=1
+    chosen_iface="tun0"
   fi
 
   if [[ -z "$chosen_iface" ]]; then
@@ -204,21 +202,23 @@ while true; do
   chosen_rx_bps=${smooth_rx_bps["$chosen_iface"]:="0"}
   chosen_tx_bps=${smooth_tx_bps["$chosen_iface"]:="0"}
 
-  total_bps=$(awk -v r="$total_rx_delta" -v t="$total_tx_delta" -v dt="$time_delta" 'BEGIN{ if(dt<=0) dt=0.0001; printf "%.6f", (r+t)/dt }')
-  if ! awk -v x="$chosen_rx_bps" -v y="$chosen_tx_bps" -v tot="$total_bps" 'BEGIN{ if(tot<=0) exit 0; if((x+y)>=(tot*0.01)) exit 0; exit 1 }'; then
-    if [[ -n "$best_iface" && "$best_iface" != "$chosen_iface" ]]; then
-      chosen_iface="$best_iface"
-      chosen_rx_bps=${smooth_rx_bps["$chosen_iface"]:="0"}
-      chosen_tx_bps=${smooth_tx_bps["$chosen_iface"]:="0"}
-    else
-      sum_srx=0; sum_stx=0
-      for iface in "${!smooth_rx_bps[@]}"; do
-        sum_srx=$(awk -v a="$sum_srx" -v b="${smooth_rx_bps[$iface]}" 'BEGIN{printf "%.6f", a+b}')
-        sum_stx=$(awk -v a="$sum_stx" -v b="${smooth_tx_bps[$iface]}" 'BEGIN{printf "%.6f", a+b}')
-      done
-      chosen_iface="total"
-      chosen_rx_bps="$sum_srx"
-      chosen_tx_bps="$sum_stx"
+  if (( vpn_active == 0 )); then
+    total_bps=$(awk -v r="$total_rx_delta" -v t="$total_tx_delta" -v dt="$time_delta" 'BEGIN{ if(dt<=0) dt=0.0001; printf "%.6f", (r+t)/dt }')
+    if ! awk -v x="$chosen_rx_bps" -v y="$chosen_tx_bps" -v tot="$total_bps" 'BEGIN{ if(tot<=0) exit 0; if((x+y)>=(tot*0.01)) exit 0; exit 1 }'; then
+      if [[ -n "$best_iface" && "$best_iface" != "$chosen_iface" ]]; then
+        chosen_iface="$best_iface"
+        chosen_rx_bps=${smooth_rx_bps["$chosen_iface"]:="0"}
+        chosen_tx_bps=${smooth_tx_bps["$chosen_iface"]:="0"}
+      else
+        sum_srx=0; sum_stx=0
+        for iface in "${!smooth_rx_bps[@]}"; do
+          sum_srx=$(awk -v a="$sum_srx" -v b="${smooth_rx_bps[$iface]}" 'BEGIN{printf "%.6f", a+b}')
+          sum_stx=$(awk -v a="$sum_stx" -v b="${smooth_tx_bps[$iface]}" 'BEGIN{printf "%.6f", a+b}')
+        done
+        chosen_iface="total"
+        chosen_rx_bps="$sum_srx"
+        chosen_tx_bps="$sum_stx"
+      fi
     fi
   fi
 
