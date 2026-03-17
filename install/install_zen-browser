@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+# Variables
+URL="https://github.com/zen-browser/desktop/releases/latest/download/zen.linux-x86_64.tar.xz"
+TMP_FILE="/tmp/zen.linux-x86_64.tar.xz"
+INSTALL_DIR="/opt/zen-browser"
+DESKTOP_FILE="$HOME/.local/share/applications/zen.desktop"
+BIN_LINK="/usr/bin/zen"
+
+echo "[+] Starting Zen Browser installation..."
+
+# Download
+echo "[+] Downloading..."
+wget -q --show-progress "$URL" -O "$TMP_FILE"
+
+# Extract
+echo "[+] Extracting..."
+sudo tar -xf "$TMP_FILE" -C /opt/
+
+# Rename directory
+echo "[+] Setting up directory..."
+sudo rm -rf "$INSTALL_DIR"
+sudo mv /opt/zen "$INSTALL_DIR"
+
+# Create desktop entry
+echo "[+] Creating desktop entry..."
+mkdir -p "$(dirname "$DESKTOP_FILE")"
+
+cat > "$DESKTOP_FILE" <<EOF
+[Desktop Entry]
+Version=1.0
+Name=Zen Browser
+Exec=$INSTALL_DIR/zen
+Terminal=false
+Type=Application
+Icon=$INSTALL_DIR/browser/chrome/icons/default/default128.png
+Categories=Network;WebBrowser;
+EOF
+
+# Update desktop database
+echo "[+] Updating desktop database..."
+update-desktop-database "$(dirname "$DESKTOP_FILE")" || true
+
+# Create symlink
+echo "[+] Creating symlink..."
+if [ ! -f "$BIN_LINK" ]; then
+    sudo ln -s "$INSTALL_DIR/zen" "$BIN_LINK"
+fi
+
+# Cleanup
+echo "[+] Cleaning up..."
+rm -f "$TMP_FILE"
+
+echo "[✔] Installation completed successfully."
+
+exit 0
