@@ -12,4 +12,4 @@ color="$TEXT"
 [ "$pct" -ge 90 ] && color="$RED"
 [ "$pct" -ge 75 ] && [ "$pct" -lt 90 ] && color="$WARN"
 
-printf "<span color='%s'>%s </span><span color='%s'>%s%%</span>\n" "$MUTED" "$ICON" "$color" "$pct"
+printf "<span color='%s'>%s </span><span color='%s'>%s%%</span>\n" "$MUTED" "| $ICON" "$color" "$pct "

@@ -29,4 +29,4 @@ else
   icon=$'\uf027'; icon_color="$TEXT"
 fi
 
-printf "<span color='%s'>%s</span>\n" "$icon_color" "$icon"
+printf "<span color='%s'>%s</span>\n" "$icon_color" "| $icon  "

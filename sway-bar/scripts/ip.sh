@@ -9,5 +9,5 @@ ipaddr="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="
 if [ -z "$ipaddr" ]; then
   printf "<span color='%s'>%s </span><span color='%s'>no ip</span>\n" "$MUTED" "$ICON" "$MUTED"
 else
-  printf "<span color='%s'>%s </span><span color='%s'>%s</span>\n" "$MUTED" "$ICON" "$TEXT" "$ipaddr"
+  printf "| <span color='%s'>%s </span><span color='%s'>%s</span>\n" "$MUTED" "$ICON" "$TEXT" "$ipaddr"
 fi

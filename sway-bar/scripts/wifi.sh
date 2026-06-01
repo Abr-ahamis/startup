@@ -23,4 +23,4 @@ else
   fi
 fi
 
-printf "<span color='%s'>● </span><span color='%s'>%s</span>\n" "$dot" "$TEXT" "$label"
+printf "| <span color='%s'>● </span><span color='%s'>%s</span>\n" "$dot" "$TEXT" "$label"

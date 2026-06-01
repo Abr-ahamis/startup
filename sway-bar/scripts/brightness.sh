@@ -20,4 +20,4 @@ pct=$((100 * current / max))
 
 icon=$'\uf185'
 
-printf "<span color='%s'>%s</span>\n" "$TEXT" "$icon"
+printf "<span color='%s'>%s</span>\n" "$TEXT" "| $icon"

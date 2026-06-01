@@ -14,4 +14,4 @@ fi
 
 color="$MUTED"
 [ "$count" -gt 0 ] && color="$WARN"
-printf "<span color='%s'>%s </span><span color='%s'>%s</span>\n" "$MUTED" "$ICON" "$color" "$count"
+printf "<span color='%s'>%s </span><span color='%s'>%s</span>\n" "$MUTED" "| $ICON " "$color" "$count "

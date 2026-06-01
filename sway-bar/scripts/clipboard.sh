@@ -12,4 +12,4 @@ case "${BLOCK_BUTTON:-}" in
   3) greenclip clear >/dev/null 2>&1 || true ;;
 esac
 
-printf "<span color='%s'>%s</span>\n" "$TEXT" "$ICON"
+printf "<span color='%s'>%s</span>\n" "$TEXT" " | $ICON"

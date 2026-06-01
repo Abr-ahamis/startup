@@ -11,4 +11,4 @@ case "$iface" in
   *) icon=$'\uf6ff'; [ -z "$iface" ] && iface="---" ;;
 esac
 
-printf "<span color='%s'>%s </span><span color='%s'>%s</span>\n" "$MUTED" "$icon" "$TEXT" "$iface"
+printf "| <span color='%s'>%s </span><span color='%s'>%s</span>\n" "$MUTED" "$icon" "$TEXT" "$iface "
