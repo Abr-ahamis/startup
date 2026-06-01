@@ -1,52 +1,225 @@
+# =========================================================
+# Sway config
+# =========================================================
+
 set $mod Mod4
+set $alt Mod1
+
 set $term foot
+set $term2 gnome-terminal
 set $menu rofi -show drun
+set $filemanager nemo
+set $browser firefox
+set $browser2 brave-browser
+set $editor gnome-text-editor
+set $screenshot flameshot gui
 
-font pango:FontAwesome, monospace 9
+# ---------------------------
+# Workspaces
+# ---------------------------
+set $ws1  "1: "
+set $ws2  "2: "
+set $ws3  "3: "
+set $ws4  "4: "
+set $ws5  "5: "
+set $ws6  "6: "
+set $ws7  "7: "
+set $ws8  "8: "
+set $ws9  "9: "
+set $ws10 "10: "
 
-workspace 1
-workspace 2
-workspace 3
-workspace 4
-workspace 5
+# ---------------------------
+# Window appearance
+# ---------------------------
+default_border none
+default_floating_border none
 
+gaps inner 2
+gaps outer 2
+smart_gaps off
+
+# ---------------------------
+# Colors
+# ---------------------------
+set $bg-color            #1e1e2e
+set $inactive-bg-color   #181825
+set $text-color          #cdd6f4
+set $inactive-text-color #585b70
+set $urgent-bg-color     #f38ba8
+
+client.focused          $bg-color           $bg-color           $text-color           #89b4fa
+client.focused_inactive $inactive-bg-color  $inactive-bg-color  $inactive-text-color  #313244
+client.unfocused        $inactive-bg-color  $inactive-bg-color  $inactive-text-color  #313244
+client.urgent           $urgent-bg-color    $urgent-bg-color    $text-color           #89b4fa
+
+# ---------------------------
+# Keybindings
+# ---------------------------
+
+# Launchers
 bindsym $mod+Return exec $term
+bindsym $mod+Shift+Return exec $term2
 bindsym $mod+d exec $menu
-bindsym $mod+Shift+c reload
-bindsym $mod+Shift+e exec ~/.config/sway/scripts/power_menu.sh
 
-bindsym $mod+1 workspace number 1
-bindsym $mod+2 workspace number 2
-bindsym $mod+3 workspace number 3
-bindsym $mod+4 workspace number 4
-bindsym $mod+5 workspace number 5
+# Apps
+bindsym $alt+Shift+e exec $filemanager
+bindsym $alt+Shift+f exec $browser
+bindsym $alt+Shift+b exec $browser2
+bindsym $alt+Shift+t exec /opt/Telegram/Telegram
+bindsym $alt+Shift+n exec $editor
+bindsym $alt+Shift+s exec $screenshot
 
-exec_always --no-startup-id greenclip daemon
-exec --no-startup-id dunst
-exec --no-startup-id nm-applet --indicator
-exec --no-startup-id blueman-applet
+# System
+bindsym Ctrl+Alt+r reload
+bindsym Ctrl+Alt+e exit
+bindsym Ctrl+Alt+l exec swaylock -f -c 2f343f
+bindsym Ctrl+Alt+p exec ~/.config/sway/scripts/power-menu.sh
 
+# Window management
+bindsym $mod+Shift+q kill
+bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space focus mode_toggle
+bindsym $mod+a focus parent
+
+# Focus windows (arrows)
+bindsym $mod+Left  focus left
+bindsym $mod+Down  focus down
+bindsym $mod+Up    focus up
+bindsym $mod+Right focus right
+
+# Focus windows (vim keys)
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+# Move windows (arrows)
+bindsym $mod+Shift+Left  move left
+bindsym $mod+Shift+Down  move down
+bindsym $mod+Shift+Up    move up
+bindsym $mod+Shift+Right move right
+
+# Move windows (vim keys)
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+# Layouts
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+
+# Resize mode
+mode "resize" {
+    bindsym j resize shrink width 2px
+    bindsym k resize grow height 2px
+    bindsym l resize shrink height 2px
+    bindsym semicolon resize grow width 2px
+
+    bindsym Left  resize shrink width 2px
+    bindsym Down  resize grow height 2px
+    bindsym Up    resize shrink height 2px
+    bindsym Right resize grow width 2px
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+r mode "default"
+}
+bindsym $mod+r mode "resize"
+
+# Scratchpad
+bindsym $mod+minus scratchpad show
+bindsym $mod+Shift+minus move scratchpad
+
+# Workspaces
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+5 workspace $ws5
+bindsym $mod+6 workspace $ws6
+bindsym $mod+7 workspace $ws7
+bindsym $mod+8 workspace $ws8
+bindsym $mod+9 workspace $ws9
+bindsym $mod+0 workspace $ws10
+
+bindsym $mod+Shift+1 move container to workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4
+bindsym $mod+Shift+5 move container to workspace $ws5
+bindsym $mod+Shift+6 move container to workspace $ws6
+bindsym $mod+Shift+7 move container to workspace $ws7
+bindsym $mod+Shift+8 move container to workspace $ws8
+bindsym $mod+Shift+9 move container to workspace $ws9
+bindsym $mod+Shift+0 move container to workspace $ws10
+
+# Hardware controls
+bindsym $alt+F6 exec pamixer -d 5
+bindsym $alt+F7 exec pamixer -i 5
+bindsym $alt+F8 exec pamixer -t
+bindsym $alt+F9 exec brightnessctl set 2%-
+bindsym $alt+F10 exec brightnessctl set 2%+
+
+# ---------------------------
+# Bar
+# ---------------------------
 bar {
     status_command i3blocks -c ~/.config/i3blocks/config
     pango_markup enabled
-    font pango:Font Awesome 6 Free, JetBrainsMono Nerd Font 9
-    height 20
+    font pango:JetBrainsMono Nerd Font 7
+    height 18
     position top
-    separator_symbol "<span color='#30363d'> | </span>"
+    separator_symbol "<span color='#313244'> | </span>"
     workspace_buttons yes
     strip_workspace_numbers no
     tray_output primary
     tray_padding 2
 
     colors {
-        background         #0e1117
-        statusline         #c9d1d9
-        separator          #30363d
-
-        focused_workspace  #0e1117  #0e1117  #c9d1d9
-        active_workspace   #161b22  #161b22  #6e7681
-        inactive_workspace #0e1117  #0e1117  #6e7681
-        urgent_workspace   #6e2020  #6e2020  #c9d1d9
-        binding_mode       #3d8f5a  #3d8f5a  #0e1117
+        background         #11111b
+        statusline         #cdd6f4
+        separator          #313244
+        focused_workspace  #1e1e2e  #1e1e2e  #cdd6f4
+        active_workspace   #181825  #181825  #6c7086
+        inactive_workspace #11111b  #11111b  #585b70
+        urgent_workspace   #f38ba8  #f38ba8  #11111b
+        binding_mode       #a6e3a1  #a6e3a1  #11111b
     }
 }
+
+# ---------------------------
+# Autostart
+# ---------------------------
+
+# XDG autostart entries
+exec_always dex --autostart --environment sway
+
+# Custom script
+exec_always ~/.config/sway/scripts/terminal-font.sh
+
+# Network tray
+exec nm-applet
+
+# Bluetooth tray
+exec blueman-applet
+
+# Notifications
+exec dunst
+
+# Clipboard manager
+exec greenclip daemon
+
+# Wallpaper
+exec swaybg -i /usr/share/backgrounds/kali/wallpaper-1.jpg -m fill
+
+# Night light
+exec gammastep -O 4500
+
+# Idle / lock
+exec swayidle -w \
+    timeout 300 'swaylock -f -c 2f343f' \
+    timeout 600 'swaymsg "output * dpms off"' \
+    resume 'swaymsg "output * dpms on"'
