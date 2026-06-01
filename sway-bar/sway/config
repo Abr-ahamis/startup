@@ -1,0 +1,52 @@
+set $mod Mod4
+set $term foot
+set $menu rofi -show drun
+
+font pango:FontAwesome, monospace 9
+
+workspace 1
+workspace 2
+workspace 3
+workspace 4
+workspace 5
+
+bindsym $mod+Return exec $term
+bindsym $mod+d exec $menu
+bindsym $mod+Shift+c reload
+bindsym $mod+Shift+e exec ~/.config/sway/scripts/power_menu.sh
+
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+5 workspace number 5
+
+exec_always --no-startup-id greenclip daemon
+exec --no-startup-id dunst
+exec --no-startup-id nm-applet --indicator
+exec --no-startup-id blueman-applet
+
+bar {
+    status_command i3blocks -c ~/.config/i3blocks/config
+    pango_markup enabled
+    font pango:Font Awesome 6 Free, JetBrainsMono Nerd Font 9
+    height 20
+    position top
+    separator_symbol "<span color='#30363d'> | </span>"
+    workspace_buttons yes
+    strip_workspace_numbers no
+    tray_output primary
+    tray_padding 2
+
+    colors {
+        background         #0e1117
+        statusline         #c9d1d9
+        separator          #30363d
+
+        focused_workspace  #0e1117  #0e1117  #c9d1d9
+        active_workspace   #161b22  #161b22  #6e7681
+        inactive_workspace #0e1117  #0e1117  #6e7681
+        urgent_workspace   #6e2020  #6e2020  #c9d1d9
+        binding_mode       #3d8f5a  #3d8f5a  #0e1117
+    }
+}
