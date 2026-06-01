@@ -209,6 +209,9 @@ exec blueman-applet
 # Notifications
 exec dunst
 
+# Autotiling
+exec_always autotiling
+
 # Clipboard manager
 exec greenclip daemon
 
