@@ -1,75 +1,75 @@
 [global_config]
-output_format=pango
+markup=pango
 markup=pango
 color=#c9d1d9
 separator=false
 separator_block_width=0
 
 [network_speed]
-command=~/.config/sway/scripts/network_speed.sh
+command=~/.config/i3blocks/scripts/network_speed.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=2
 
 [cpu]
-command=~/.config/sway/scripts/cpu.sh
+command=~/.config/i3blocks/scripts/cpu.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=3
 
 [ram]
-command=~/.config/sway/scripts/ram.sh
+command=~/.config/i3blocks/scripts/ram.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=5
 
 [disk]
-command=~/.config/sway/scripts/disk.sh
+command=~/.config/i3blocks/scripts/disk.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=30
 
 [updates]
-command=~/.config/sway/scripts/updates.sh
+command=~/.config/i3blocks/scripts/updates.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=3600
 
 [ip]
-command=~/.config/sway/scripts/ip.sh
+command=~/.config/i3blocks/scripts/ip.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=10
 
 [interface]
-command=~/.config/sway/scripts/interface.sh
+command=~/.config/i3blocks/scripts/interface.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=5
 
 [wifi]
-command=~/.config/sway/scripts/wifi.sh
+command=~/.config/i3blocks/scripts/wifi.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=5
 
 [bluetooth]
-command=~/.config/sway/scripts/bluetooth.sh
+command=~/.config/i3blocks/scripts/bluetooth.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=5
 
 [volume]
-command=~/.config/sway/scripts/volume.sh
+command=~/.config/i3blocks/scripts/volume.sh
 markup=pango
 separator=false
 separator_block_width=0
@@ -77,7 +77,7 @@ interval=once
 signal=10
 
 [brightness]
-command=~/.config/sway/scripts/brightness.sh
+command=~/.config/i3blocks/scripts/brightness.sh
 markup=pango
 separator=false
 separator_block_width=0
@@ -85,35 +85,35 @@ interval=once
 signal=11
 
 [clipboard]
-command=~/.config/sway/scripts/clipboard.sh
+command=~/.config/i3blocks/scripts/clipboard.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=once
 
 [date]
-command=~/.config/sway/scripts/date.sh
+command=~/.config/i3blocks/scripts/date.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=60
 
 [time]
-command=~/.config/sway/scripts/time.sh
+command=~/.config/i3blocks/scripts/time.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=10
 
 [battery]
-command=~/.config/sway/scripts/battery.sh
+command=~/.config/i3blocks/scripts/battery.sh
 markup=pango
 separator=false
 separator_block_width=0
 interval=30
 
 [power]
-command=~/.config/sway/scripts/power.sh
+command=~/.config/i3blocks/scripts/power.sh
 markup=pango
 separator=false
 separator_block_width=0
