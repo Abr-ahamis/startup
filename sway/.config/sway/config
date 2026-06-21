@@ -189,6 +189,14 @@ bar {
         binding_mode       #a6e3a1  #a6e3a1  #11111b
     }
 }
+# ---------------------------
+# Menu
+# ---------------------------
+
+bindsym $mod+Shift+w exec foot -e sudo ~/.config/i3blocks/scripts/menu/wifi_menu.sh
+bindsym $mod+Shift+b exec foot -e sudo ~/.config/i3blocks/scripts/menu/wifi_menu.sh
+bindsym $mod+Shift+p exec foot -e sudo ~/.config/i3blocks/scripts/menu/wifi_menu.sh
+
 
 # ---------------------------
 # Autostart
