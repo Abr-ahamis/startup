@@ -10,22 +10,22 @@ ON="#3d8f5a"
 TEXT="#c9d1d9"
 
 # =========================
-# Icons (Nerd Font / Font Awesome)
-# =========================
-ICON_WIFI=""
-ICON_DOT="●"
-
-# =========================
 # Actions
 # =========================
 case "${BLOCK_BUTTON:-}" in
   1)
-    nohup "$HOME/.config/sway/scripts/wifi_menu.sh" >/dev/null 2>&1 &
+    foot bash -c "sudo \"$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh\"; exec bash" >/dev/null 2>&1 &
     ;;
   3)
     nohup nm-connection-editor >/dev/null 2>&1 &
     ;;
 esac
+
+# =========================
+# Icons (Nerd Font / Font Awesome)
+# =========================
+ICON_WIFI=""
+ICON_DOT="●"
 
 # =========================
 # Logic

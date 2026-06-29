@@ -7,6 +7,15 @@ set -u
 TEXT="#c9d1d9"
 
 # =========================
+# Actions
+# =========================
+case "${BLOCK_BUTTON:-}" in
+  1)
+    foot bash -c "brightnessctl -m; echo; read -rp 'Set brightness (e.g. 50%): ' val; if [[ -n \"$val\" ]]; then brightnessctl set \"$val\"; fi; exec bash" >/dev/null 2>&1 &
+    ;;
+esac
+
+# =========================
 # Icons (Nerd Font / Font Awesome)
 # =========================
 ICON_BRIGHTNESS=""
@@ -17,23 +26,6 @@ ICON_BRIGHTNESS=""
 signal_bar() {
   pkill -RTMIN+11 i3blocks 2>/dev/null || true
 }
-
-# =========================
-# Actions
-# =========================
-case "${BLOCK_BUTTON:-}" in
-  1)
-    nohup "$HOME/.config/sway/scripts/brightness_menu.sh" >/dev/null 2>&1 &
-    ;;
-  4)
-    brightnessctl set 5%+ 2>/dev/null
-    signal_bar
-    ;;
-  5)
-    brightnessctl set 5%- 2>/dev/null
-    signal_bar
-    ;;
-esac
 
 # =========================
 # Logic

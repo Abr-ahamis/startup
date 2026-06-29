@@ -10,18 +10,22 @@ ON="#3d8f5a"
 TEXT="#c9d1d9"
 
 # =========================
+# Actions
+# =========================
+case "${BLOCK_BUTTON:-}" in
+  1)
+    foot bash -c "sudo \"$HOME/.config/i3blocks/scripts/menu/bt_menu.sh\"; exec bash" >/dev/null 2>&1 &
+    ;;
+  3)
+    nohup blueman-manager >/dev/null 2>&1 &
+    ;;
+esac
+
+# =========================
 # Icons (Nerd Font / Font Awesome)
 # =========================
 ICON_BLUETOOTH=""
 ICON_DOT="●"
-
-# =========================
-# Actions
-# =========================
-case "${BLOCK_BUTTON:-}" in
-  1) nohup "$HOME/.config/sway/scripts/bt_menu.sh" >/dev/null 2>&1 & ;;
-  3) nohup blueman-manager >/dev/null 2>&1 & ;;
-esac
 
 # =========================
 # Logic

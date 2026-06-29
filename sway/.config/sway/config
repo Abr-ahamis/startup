@@ -1,5 +1,5 @@
 # =========================================================
-# Sway config
+# Sway Config
 # =========================================================
 
 set $mod Mod4
@@ -56,12 +56,10 @@ client.urgent           $urgent-bg-color    $urgent-bg-color    $text-color     
 # Keybindings
 # ---------------------------
 
-# Launchers
 bindsym $mod+Return exec $term
 bindsym $mod+Shift+Return exec $term2
 bindsym $mod+d exec $menu
 
-# Apps
 bindsym $alt+Shift+e exec $filemanager
 bindsym $alt+Shift+f exec $browser
 bindsym $alt+Shift+b exec $browser2
@@ -69,47 +67,51 @@ bindsym $alt+Shift+t exec /opt/Telegram/Telegram
 bindsym $alt+Shift+n exec $editor
 bindsym $alt+Shift+s exec $screenshot
 
-# System
 bindsym Ctrl+Alt+r reload
 bindsym Ctrl+Alt+e exit
 bindsym Ctrl+Alt+l exec swaylock -f -c 2f343f
 bindsym Ctrl+Alt+p exec ~/.config/sway/scripts/power-menu.sh
 
-# Window management
 bindsym $mod+Shift+q kill
 bindsym $mod+f fullscreen toggle
 bindsym $mod+Shift+space floating toggle
 bindsym $mod+space focus mode_toggle
 bindsym $mod+a focus parent
 
-# Focus windows (arrows)
 bindsym $mod+Left  focus left
 bindsym $mod+Down  focus down
 bindsym $mod+Up    focus up
 bindsym $mod+Right focus right
 
-# Focus windows (vim keys)
 bindsym $mod+h focus left
 bindsym $mod+j focus down
 bindsym $mod+k focus up
 bindsym $mod+l focus right
 
-# Move windows (arrows)
 bindsym $mod+Shift+Left  move left
 bindsym $mod+Shift+Down  move down
 bindsym $mod+Shift+Up    move up
 bindsym $mod+Shift+Right move right
 
-# Move windows (vim keys)
 bindsym $mod+Shift+h move left
 bindsym $mod+Shift+j move down
 bindsym $mod+Shift+k move up
 bindsym $mod+Shift+l move right
 
-# Layouts
 bindsym $mod+s layout stacking
 bindsym $mod+w layout tabbed
 bindsym $mod+e layout toggle split
+
+bindsym $alt+F6 exec pamixer -d 5
+bindsym $alt+F7 exec pamixer -i 5
+bindsym $alt+F8 exec pamixer -t
+bindsym $alt+F9 exec brightnessctl set 2%-
+bindsym $alt+F10 exec brightnessctl set 2%+
+
+# Night Light
+bindsym Mod1+F3 exec gammastep -O 3500
+bindsym Mod1+F2 exec gammastep -O 4500
+bindsym Mod1+F1 exec gammastep -x
 
 # Resize mode
 mode "resize" {
@@ -129,11 +131,9 @@ mode "resize" {
 }
 bindsym $mod+r mode "resize"
 
-# Scratchpad
 bindsym $mod+minus scratchpad show
 bindsym $mod+Shift+minus move scratchpad
 
-# Workspaces
 bindsym $mod+1 workspace $ws1
 bindsym $mod+2 workspace $ws2
 bindsym $mod+3 workspace $ws3
@@ -156,12 +156,9 @@ bindsym $mod+Shift+8 move container to workspace $ws8
 bindsym $mod+Shift+9 move container to workspace $ws9
 bindsym $mod+Shift+0 move container to workspace $ws10
 
-# Hardware controls
-bindsym $alt+F6 exec pamixer -d 5
-bindsym $alt+F7 exec pamixer -i 5
-bindsym $alt+F8 exec pamixer -t
-bindsym $alt+F9 exec brightnessctl set 2%-
-bindsym $alt+F10 exec brightnessctl set 2%+
+# ---------------------------
+# Transparency
+# ---------------------------
 
 # ---------------------------
 # Bar
@@ -172,65 +169,39 @@ bar {
     font pango:JetBrainsMono Nerd Font 7
     height 18
     position top
-    separator_symbol "<span color='#313244'> | </span>"
-    workspace_buttons yes
-    strip_workspace_numbers no
-    tray_output primary
-    tray_padding 2
+    tray_output none
 
     colors {
         background         #11111b
         statusline         #cdd6f4
         separator          #313244
-        focused_workspace  #1e1e2e  #1e1e2e  #cdd6f4
-        active_workspace   #181825  #181825  #6c7086
-        inactive_workspace #11111b  #11111b  #585b70
-        urgent_workspace   #f38ba8  #f38ba8  #11111b
-        binding_mode       #a6e3a1  #a6e3a1  #11111b
+        focused_workspace  #1e1e2e #1e1e2e #cdd6f4
+        active_workspace   #181825 #181825 #6c7086
+        inactive_workspace #11111b #11111b #585b70
+        urgent_workspace   #f38ba8 #f38ba8 #11111b
+        binding_mode       #a6e3a1 #a6e3a1 #11111b
     }
 }
-# ---------------------------
-# Menu
-# ---------------------------
-
-bindsym $mod+Shift+w exec foot -e sudo ~/.config/i3blocks/scripts/menu/wifi_menu.sh
-bindsym $mod+Shift+b exec foot -e sudo ~/.config/i3blocks/scripts/menu/wifi_menu.sh
-bindsym $mod+Shift+p exec foot -e sudo ~/.config/i3blocks/scripts/menu/wifi_menu.sh
-
 
 # ---------------------------
 # Autostart
 # ---------------------------
-
-# XDG autostart entries
 exec_always dex --autostart --environment sway
-
-# Custom script
 exec_always ~/.config/sway/scripts/terminal-font.sh
 
-# Network tray
 exec nm-applet
-
-# Bluetooth tray
 exec blueman-applet
-
-# Notifications
 exec dunst
 
-# Autotiling
 exec_always autotiling
-
-# Clipboard manager
 exec greenclip daemon
 
-# Wallpaper
-exec swaybg -i /usr/share/backgrounds/kali/wallpaper-1.jpg -m fill
-
-# Night light
+exec swaybg -i /usr/share/backgrounds/kali/wallpaper.jpg -m fill
 exec gammastep -O 4500
 
-# Idle / lock
 exec swayidle -w \
     timeout 300 'swaylock -f -c 2f343f' \
     timeout 600 'swaymsg "output * dpms off"' \
     resume 'swaymsg "output * dpms on"'
+
+exec_always ~/.local/bin/opacity.sh

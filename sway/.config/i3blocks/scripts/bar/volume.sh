@@ -8,26 +8,11 @@ MUTED="#6e7681"
 TEXT="#c9d1d9"
 
 # =========================
-# Icons (Nerd Font / Font Awesome)
-# =========================
-ICON_VOLUME_HIGH=""
-ICON_VOLUME_MED=""
-ICON_VOLUME_LOW=""
-ICON_VOLUME_MUTED=""
-
-# =========================
-# Helpers
-# =========================
-signal_bar() {
-  pkill -RTMIN+10 i3blocks 2>/dev/null || true
-}
-
-# =========================
 # Actions
 # =========================
 case "${BLOCK_BUTTON:-}" in
   1)
-    nohup "$HOME/.config/sway/scripts/volume_menu.sh" >/dev/null 2>&1 &
+    foot bash -c "if command -v pavucontrol >/dev/null 2>&1; then pavucontrol; else alsamixer; fi; exec bash" >/dev/null 2>&1 &
     ;;
   3)
     wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle 2>/dev/null
@@ -42,6 +27,21 @@ case "${BLOCK_BUTTON:-}" in
     signal_bar
     ;;
 esac
+
+# =========================
+# Icons (Nerd Font / Font Awesome)
+# =========================
+ICON_VOLUME_HIGH=""
+ICON_VOLUME_MED=""
+ICON_VOLUME_LOW=""
+ICON_VOLUME_MUTED=""
+
+# =========================
+# Helpers
+# =========================
+signal_bar() {
+  pkill -RTMIN+10 i3blocks 2>/dev/null || true
+}
 
 # =========================
 # Logic

@@ -8,6 +8,15 @@ MUTED="#6e7681"
 TEXT="#c9d1d9"
 
 # =========================
+# Actions
+# =========================
+case "${BLOCK_BUTTON:-}" in
+  1)
+    foot -e sudo "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh" >/dev/null 2>&1 &
+    ;;
+esac
+
+# =========================
 # Icons (Nerd Font / Font Awesome)
 # =========================
 ICON_UP=""

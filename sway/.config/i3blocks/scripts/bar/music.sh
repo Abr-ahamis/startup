@@ -9,14 +9,6 @@ MUTED="#6e7681"
 OFF="#4a5568"
 
 # =========================
-# Icons (Nerd Font / Font Awesome)
-# =========================
-ICON_PREV=""
-ICON_PLAY=""
-ICON_PAUSE=""
-ICON_NEXT=""
-
-# =========================
 # Actions
 # =========================
 case "${BLOCK_BUTTON:-}" in
@@ -24,6 +16,14 @@ case "${BLOCK_BUTTON:-}" in
   2) playerctl play-pause >/dev/null 2>&1 || true ;;
   3) playerctl next >/dev/null 2>&1 || true ;;
 esac
+
+# =========================
+# Icons (Nerd Font / Font Awesome)
+# =========================
+ICON_PREV=""
+ICON_PLAY=""
+ICON_PAUSE=""
+ICON_NEXT=""
 
 # =========================
 # Logic

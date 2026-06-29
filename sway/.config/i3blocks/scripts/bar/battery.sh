@@ -10,6 +10,13 @@ ORANGE="#c98a2d"
 MUTED="#6e7681"
 
 # =========================
+# Actions
+# =========================
+case "${BLOCK_BUTTON:-}" in
+  1) ;;
+esac
+
+# =========================
 # Icons (Nerd Font / Font Awesome)
 # =========================
 ICON_BATTERY_CHARGING=""
@@ -37,8 +44,8 @@ if [ -z "$bat" ]; then
   exit 0
 fi
 
-pct="$(cat "$bat/capacity" 2>/dev/null || printf 0)"
-status="$(cat "$bat/status" 2>/dev/null || printf Unknown)"
+pct="$(cat "$bat/capacity" 2>/dev/null || printf 0) "
+status="$(cat "$bat/status" 2>/dev/null || printf Unknown) "
 
 icon=""
 color="$TEXT"

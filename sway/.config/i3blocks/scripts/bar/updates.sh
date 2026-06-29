@@ -8,6 +8,13 @@ MUTED="#6e7681"
 WARN="#d4902a"
 
 # =========================
+# Actions
+# =========================
+case "${BLOCK_BUTTON:-}" in
+  1) ;;
+esac
+
+# =========================
 # Icons (Nerd Font / Font Awesome)
 # =========================
 ICON_UPDATES=""

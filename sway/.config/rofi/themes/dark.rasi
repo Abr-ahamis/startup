@@ -1,5 +1,5 @@
-@import "themes/colors.rasi"
-@import "themes/fonts.rasi"
+@import "colors.rasi"
+@import "fonts.rasi"
 
 * {
     background-color: transparent;
@@ -12,7 +12,7 @@ window {
     transparency: "real";
     location: center;
     anchor: center;
-    width: 760px;
+    width: 720px;
     border-radius: 18px;
     background-color: @transparent-bg;
     border: 2px;
