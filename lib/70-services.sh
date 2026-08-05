@@ -23,7 +23,7 @@ reload_target_sway() {
     _setup_log_write INFO "Sway reload confirmed."
     return 0
   fi
-  _setup_log_write WARN "Sway reload failed; inspect $SETUP_LOG_FILE for the IPC error."
+  _setup_log_write WARN "Sway reload failed; check the setup log for details."
   return 1
 }
 

@@ -92,7 +92,6 @@ start_transcript_logging() {
   # Preserve the normal terminal output while recording every subsequent
   # stdout/stderr line, including output from optional installer scripts.
   exec > >(tee -a "$SETUP_TRANSCRIPT_FILE") 2>&1
-  info "Execution transcript: $SETUP_TRANSCRIPT_FILE"
 }
 
 elapsed_time() {

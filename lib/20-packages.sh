@@ -96,22 +96,32 @@ install_packages() {
   # Keep it attached to this terminal's authenticated sudo session; never run
   # concurrent APT commands.
   if [[ "$PKG_MANAGER" == apt ]]; then
-    info "Installing $# package(s) in one APT transaction."
     if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
       run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get \
         -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" \
         -o Dpkg::Use-Pty=0 -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
-        install -y --reinstall --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1
+        install -y --reinstall --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1 &
     else
       run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get \
         -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" \
         -o Dpkg::Use-Pty=0 -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
-        install -y --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1
+        install -y --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1 &
     fi
+    pid=$!
+    local percent=0
+    while kill -0 "$pid" 2>/dev/null; do
+      package_progress "APT" "$percent" "installing"
+      (( percent < 90 )) && percent=$((percent + 5))
+      sleep 0.2
+    done
+    wait "$pid"
     rc=$?
-    if (( rc != 0 )); then
-      for package in "$@"; do package_progress "$package" 100 "failed"; printf '\n'; done
+    if (( rc == 0 )); then
+      package_progress "APT" 100 "installed"
+    else
+      package_progress "APT" 100 "failed"
     fi
+    printf '\n'
     return "$rc"
   fi
   for package in "$@"; do
@@ -227,21 +237,25 @@ run_packages() {
     fi
   done
   if (( ${#MISSING_PACKAGES[@]} )); then
-    info "Installing ${#MISSING_PACKAGES[@]} missing package(s). Detailed APT output: $SETUP_LOG_FILE"
     if ! install_packages "${MISSING_PACKAGES[@]}"; then
-      warn "Package installation failed; running repair commands and retrying once."
       if [[ "$PKG_MANAGER" == apt ]]; then
+        _setup_log_write INFO "Package install failed; running repair commands and retrying once."
         repair_apt
       fi
-      if ! install_packages "${MISSING_PACKAGES[@]}"; then
-        warn "Package installation still has failures; inspect $SETUP_LOG_FILE."
-      fi
+      install_packages "${MISSING_PACKAGES[@]}" || true
     fi
     for pkg in "${MISSING_PACKAGES[@]}"; do
-      if package_installed "$pkg"; then ok "$pkg installed and verified"; else warn "$pkg failed to install"; FAILED_REQUIRED_PACKAGES+=("$pkg"); fi
+      if ! package_installed "$pkg"; then
+        FAILED_REQUIRED_PACKAGES+=("$pkg")
+      fi
     done
+    if (( ${#FAILED_REQUIRED_PACKAGES[@]} )); then
+      _setup_log_write WARN "Packages failed: ${FAILED_REQUIRED_PACKAGES[*]}"
+    else
+      ok "All required packages installed."
+    fi
   else
-    ok "All $total required packages are already installed."
+    ok "All required packages already installed."
   fi
   if (( backup_ready )); then
     # The backup directory is intentionally root-only.  The elevated tee owns

@@ -60,13 +60,13 @@ run_grub() {
     if run_as_root update-grub >>"$SETUP_LOG_FILE" 2>&1; then
       ok "GRUB theme installed and configuration regenerated"
     else
-      warn "update-grub failed; inspect $SETUP_LOG_FILE for its exact error."
+      warn "update-grub failed; check the setup log for details."
     fi
   elif run_as_root sh -c 'command -v grub-mkconfig >/dev/null 2>&1'; then
     if run_as_root grub-mkconfig -o /boot/grub/grub.cfg >>"$SETUP_LOG_FILE" 2>&1; then
       ok "GRUB theme installed and configuration regenerated"
     else
-      warn "grub-mkconfig failed; inspect $SETUP_LOG_FILE for its exact error."
+      warn "grub-mkconfig failed; check the setup log for details."
     fi
   else
     warn "No GRUB configuration generator is available after the repair attempt."

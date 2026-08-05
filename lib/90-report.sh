@@ -243,11 +243,14 @@ run_report() {
   echo "Config Path  : $TARGET_HOME/.config"
   echo "Fonts Cached : Yes"
   echo "Wallpapers   : ${#replaced[@]} replaced"
+  if (( ${#FAILED_REQUIRED_PACKAGES[@]} )); then
+    printf 'Failed Packages: %s\n' "${FAILED_REQUIRED_PACKAGES[*]}"
+  fi
+  echo "Log file     : $SETUP_LOG_FILE"
   echo "Backups      :"
   [[ -d "${SETUP_BACKUP_DIR:-}" ]] && echo "  Installer  : $SETUP_BACKUP_DIR"
   [[ -d "${SETUP_WALLPAPER_BACKUP_DIR:-}" ]] && echo "  Wallpapers : $SETUP_WALLPAPER_BACKUP_DIR"
   [[ -d "${security_backup_dir:-}" ]] && echo "  Security   : $security_backup_dir"
-  echo "Log file     : $SETUP_BASE_DIR/"
   printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
 
   start_sway_preview || true
