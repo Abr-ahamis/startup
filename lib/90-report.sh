@@ -8,6 +8,29 @@
 if [[ -n "${__SETUP_REPORT_LOADED:-}" ]]; then return 0; fi
 __SETUP_REPORT_LOADED=1
 
+start_sway_preview() {
+  local runtime="/run/user/$TARGET_UID" sway_log="$SETUP_BASE_DIR/sway-preview.log"
+  local -a sway_env
+  # Preview only outside Sway. It never reloads, replaces, or nests an active
+  # Sway session.
+  pgrep -u "$TARGET_UID" -x sway >/dev/null 2>&1 && return 0
+  command -v sway >/dev/null 2>&1 || return 0
+  [[ -d "$runtime" ]] || return 0
+  if [[ -n "${WAYLAND_DISPLAY:-}" && "${XDG_SESSION_TYPE:-}" == wayland ]]; then
+    sway_env=(env "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" "XDG_RUNTIME_DIR=$runtime" "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland WLR_BACKENDS=wayland WLR_WAYLAND_OUTPUTS=1)
+  elif [[ -n "${DISPLAY:-}" ]]; then
+    sway_env=(env "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" "XDG_RUNTIME_DIR=$runtime" "DISPLAY=$DISPLAY" XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1)
+  else
+    return 0
+  fi
+  _setup_log_write INFO "Opening a nested Sway preview window."
+  if (( EUID == 0 )); then
+    runuser -u "$TARGET_USER" -- "${sway_env[@]}" nohup setsid sway >>"$sway_log" 2>&1 </dev/null &
+  else
+    "${sway_env[@]}" nohup setsid sway >>"$sway_log" 2>&1 </dev/null &
+  fi
+}
+
 optional_command_installed() {
   local command_name="${1:-}"
   command -v "$command_name" >/dev/null 2>&1 || [[ -x "$TARGET_HOME/.local/bin/$command_name" ]]
@@ -222,4 +245,5 @@ run_report() {
   echo "Log file     : $SETUP_BASE_DIR/"
   printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
 
+  start_sway_preview || true
 }

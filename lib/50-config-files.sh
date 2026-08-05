@@ -36,7 +36,14 @@ configure_backlight_access() {
   local sudoers_file="/etc/sudoers.d/startup-brightness"
   local temp_file sudoers_temp brightnessctl_path group="video"
 
-  command -v brightnessctl >/dev/null 2>&1 || return 0
+  if ! command -v brightnessctl >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; then
+    info "Installing brightness permission prerequisites."
+    install_packages brightnessctl sudo || warn "Could not install brightnessctl and sudo; brightness permissions were skipped."
+  fi
+  if ! command -v brightnessctl >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; then
+    warn "brightnessctl or visudo is unavailable; passwordless brightness control was not configured."
+    return 1
+  fi
   getent group "$group" >/dev/null 2>&1 || {
     warn "The video group is unavailable; brightness permissions were not configured."
     return 1
@@ -99,9 +106,6 @@ configure_backlight_access() {
       warn "The generated brightness sudoers rule failed validation."
       return 1
     fi
-  else
-    warn "visudo or brightnessctl is unavailable; passwordless brightness control was not configured."
-    return 1
   fi
   ok "Brightness device permissions configured"
 }

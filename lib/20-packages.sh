@@ -23,7 +23,8 @@ package_for() {
     debian:audio) echo pipewire pipewire-pulse wireplumber;; arch:audio) echo pipewire pipewire-pulse wireplumber;;
     debian:clipboard|arch:clipboard) echo cliphist;;
     debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:core|arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman;;
+    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman sudo grub2-common;;
+    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman;;
     *) return 1;;
   esac
 }
@@ -193,15 +194,13 @@ run_packages() {
   # repair interrupted Debian transactions before installing anything.
   if [[ "$PKG_MANAGER" == apt ]]; then
     check_package_disk_space || return 1
-    info "Refreshing configured official APT repositories (no repositories are added or changed)."
+    info "Refreshing APT....."
     run_as_root env DEBIAN_FRONTEND=noninteractive timeout 5m apt-get \
       -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
       update >>"$SETUP_LOG_FILE" 2>&1 || warn "APT package-index refresh failed; cached metadata will be used."
-    if [[ -n "$(run_as_root dpkg --audit 2>/dev/null || true)" ]]; then
-      warn "An interrupted dpkg transaction was detected; repairing it before installation."
-      run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
-      run_as_root apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || warn "APT dependency repair failed; installation will continue."
-    fi
+   
+    run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || warn "dpkg --configure -a could not complete; installation will continue only if APT can repair it."
+    run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -f install -y >>"$SETUP_LOG_FILE" 2>&1 || warn "APT dependency repair failed; installation will continue."
     # Authenticate while attached to the terminal; package jobs run in the
     # background and must never block waiting for a hidden sudo prompt.
     run_as_root true || return 1

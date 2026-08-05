@@ -94,7 +94,7 @@ if [[ ! -d "$LIB_DIR" ]]; then
 fi
 
 # ---------- Validate and source modules in order ----------
-modules=(00-common.sh 10-distro.sh 20-packages.sh 25-users.sh 30-pipx.sh 40-grub.sh 50-config-files.sh 60-wallpapers.sh 70-services.sh 75-theme.sh 80-security.sh 90-report.sh 95-gnome-keybindings.sh)
+modules=(00-common.sh 10-distro.sh 20-packages.sh 25-users.sh 30-pipx.sh 40-grub.sh 50-config-files.sh 60-wallpapers.sh 70-services.sh 80-security.sh 90-report.sh 95-gnome-keybindings.sh)
 for module in "${modules[@]}"; do
   if [[ ! -r "$LIB_DIR/$module" ]]; then
     printf 'ERROR: Required module is missing or unreadable: %s\n' "$LIB_DIR/$module" >&2
@@ -112,6 +112,8 @@ start_transcript_logging || true
 if [[ "$SETUP_ONLY_SECURITY" == "1" ]]; then
   SETUP_STAGE_TOTAL=2
 elif [[ "$SETUP_SKIP_SECURITY" == "1" ]]; then
+  SETUP_STAGE_TOTAL=7
+else
   SETUP_STAGE_TOTAL=8
 fi
 
@@ -132,8 +134,6 @@ if [[ "$SETUP_ONLY_SECURITY" != "1" ]]; then
   run_packages
   stage "Optional autotiling"
   run_pipx
-  stage "GTK theme"
-  run_theme
   stage "GRUB theme"
   run_grub
   stage "User configuration"
