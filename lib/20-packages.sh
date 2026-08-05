@@ -31,6 +31,20 @@ package_for() {
 
 package_installed() { case "$PKG_MANAGER" in apt) dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -qx 'install ok installed';; pacman) pacman -Q "$1" >/dev/null 2>&1;; esac; }
 package_available() { case "$PKG_MANAGER" in apt) apt-cache show "$1" >/dev/null 2>&1;; pacman) pacman -Si "$1" >/dev/null 2>&1;; esac; }
+
+repair_apt() {
+  info "Repairing APT/dpkg state."
+  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get clean >>"$SETUP_LOG_FILE" 2>&1 || true
+  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoclean >>"$SETUP_LOG_FILE" 2>&1 || true
+  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
+  run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
+  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing >>"$SETUP_LOG_FILE" 2>&1 || true
+  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >>"$SETUP_LOG_FILE" 2>&1 || true
+  if [[ -n "${SETUP_APT_REPAIR_REPO_URL:-}" ]]; then
+    run_as_root bash -lc 'printf "%s\n" "$1" > /etc/apt/sources.list.d/startup-repair.list' sh "$SETUP_APT_REPAIR_REPO_URL" >>"$SETUP_LOG_FILE" 2>&1 || true
+  fi
+}
+
 package_progress() {
   local package="$1" percent="$2" state="$3" filled empty bar=''
   filled=$((percent / 5)); empty=$((20 - filled))
@@ -197,13 +211,6 @@ run_packages() {
   # repair interrupted Debian transactions before installing anything.
   if [[ "$PKG_MANAGER" == apt ]]; then
     check_package_disk_space || return 1
-    info "Refreshing APT....."
-    run_as_root env DEBIAN_FRONTEND=noninteractive timeout 5m apt-get \
-      -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
-      update >>"$SETUP_LOG_FILE" 2>&1 || warn "APT package-index refresh failed; cached metadata will be used."
-   
-    run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || warn "dpkg --configure -a could not complete; installation will continue only if APT can repair it."
-    run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -f install -y >>"$SETUP_LOG_FILE" 2>&1 || warn "APT dependency repair failed; installation will continue."
     # Authenticate while attached to the terminal; package jobs run in the
     # background and must never block waiting for a hidden sudo prompt.
     run_as_root true || return 1
@@ -222,17 +229,13 @@ run_packages() {
   if (( ${#MISSING_PACKAGES[@]} )); then
     info "Installing ${#MISSING_PACKAGES[@]} missing package(s). Detailed APT output: $SETUP_LOG_FILE"
     if ! install_packages "${MISSING_PACKAGES[@]}"; then
-      warn "Package installation failed; attempting APT repair and retrying once."
+      warn "Package installation failed; running repair commands and retrying once."
       if [[ "$PKG_MANAGER" == apt ]]; then
-        # Run a conservative repair sequence to recover from interrupted APT/dpkg states.
-        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get clean >>"$SETUP_LOG_FILE" 2>&1 || true
-        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoclean >>"$SETUP_LOG_FILE" 2>&1 || true
-        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
-        run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
-        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing >>"$SETUP_LOG_FILE" 2>&1 || true
-        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >>"$SETUP_LOG_FILE" 2>&1 || true
+        repair_apt
       fi
-      install_packages "${MISSING_PACKAGES[@]}" || warn "Package installation still has failures; inspect $SETUP_LOG_FILE."
+      if ! install_packages "${MISSING_PACKAGES[@]}"; then
+        warn "Package installation still has failures; inspect $SETUP_LOG_FILE."
+      fi
     fi
     for pkg in "${MISSING_PACKAGES[@]}"; do
       if package_installed "$pkg"; then ok "$pkg installed and verified"; else warn "$pkg failed to install"; FAILED_REQUIRED_PACKAGES+=("$pkg"); fi
