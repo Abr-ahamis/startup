@@ -1,0 +1,220 @@
+# =========================================================
+# Sway Config
+# =========================================================
+
+set $mod Mod4
+set $alt Mod1
+
+set $bar-hight 16
+set $bar-font-size 7
+
+set $term ~/.local/bin/launch-app.sh terminal
+set $term2 ~/.local/bin/launch-app.sh terminal-secondary
+set $menu wofi --show drun
+set $filemanager ~/.local/bin/launch-app.sh filemanager
+set $browser ~/.local/bin/launch-app.sh browser
+set $browser2 ~/.local/bin/launch-app.sh browser-secondary
+set $editor ~/.local/bin/launch-app.sh editor
+set $screenshot ~/.local/bin/launch-app.sh screenshot
+
+# ---------------------------
+# Workspaces
+# ---------------------------
+set $ws1  "1: 󰋜"
+set $ws2  "2: "
+set $ws3  "3: "
+set $ws4  "4: "
+set $ws5  "5: "
+set $ws6  "6: "
+set $ws7  "7: "
+set $ws8  "8: "
+set $ws9  "9: "
+set $ws10 "10: 󰖂"
+
+# ---------------------------
+# Window appearance
+# ---------------------------
+default_border none
+default_floating_border none
+
+gaps inner 2
+gaps outer 2
+smart_gaps off
+output * scale 1
+
+
+# ---------------------------
+# Colors
+# ---------------------------
+set $bg-color            #1e1e2e
+set $inactive-bg-color   #181825
+set $text-color          #cdd6f4
+set $inactive-text-color #585b70
+set $urgent-bg-color     #f38ba8
+
+client.focused          $bg-color           $bg-color           $text-color           #89b4fa  $bg-color
+client.focused_inactive $inactive-bg-color  $inactive-bg-color  $inactive-text-color  #313244  $inactive-bg-color
+client.unfocused        $inactive-bg-color  $inactive-bg-color  $inactive-text-color  #313244  $inactive-bg-color
+client.urgent           $urgent-bg-color    $urgent-bg-color    $text-color           #89b4fa  $urgent-bg-color
+
+
+
+for_window [app_id="wofi"] floating enable
+for_window [app_id="wofi"] border pixel 1
+for_window [app_id="wofi"] sticky enable
+
+# ---------------------------
+# Keybindings
+# ---------------------------
+
+bindsym $mod+Return exec $term
+bindsym $mod+Shift+Return exec $term2
+bindsym $mod exec $menu
+bindsym $mod+d exec $menu
+bindsym Shift+F1 exec ~/.config/sway/scripts/key-help-wofi.sh
+
+bindsym $mod+Shift+e exec $filemanager
+bindsym $mod+Shift+f exec $browser
+bindsym $mod+Shift+b exec $browser2
+bindsym $mod+Shift+t exec ~/.local/bin/launch-app.sh telegram
+bindsym $mod+Shift+n exec $editor
+bindsym $mod+Shift+s exec $screenshot
+bindsym $mod+Shift+c exec ~/.local/bin/launch-app.sh code
+bindsym $mod+Shift+o exec ~/.local/bin/launch-app.sh obsidian
+
+
+bindsym Ctrl+Alt+r reload
+bindsym Ctrl+Alt+e exit
+bindsym Ctrl+Alt+l exec swaylock -f -c 2f343f
+bindsym Ctrl+Alt+p exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
+bindsym Ctrl+Alt+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
+bindsym Ctrl+Alt+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
+bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_menu.sh; exec bash"
+bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
+
+
+bindsym $mod+Shift+q kill
+bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+space floating toggle
+bindsym $mod+space focus mode_toggle
+bindsym $mod+a focus parent
+
+bindsym $mod+Left  focus left
+bindsym $mod+Down  focus down
+bindsym $mod+Up    focus up
+bindsym $mod+Right focus right
+
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+bindsym $mod+Shift+Left  move left
+bindsym $mod+Shift+Down  move down
+bindsym $mod+Shift+Up    move up
+bindsym $mod+Shift+Right move right
+
+bindsym $mod+Shift+h move left
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right
+
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+
+bindsym XF86AudioLowerVolume exec pamixer -d 5
+bindsym XF86AudioRaiseVolume exec pamixer -i 5
+bindsym XF86AudioMute exec pamixer -t
+bindsym XF86MonBrightnessDown exec ~/.local/bin/brightness-control.sh set '2%-'
+bindsym XF86MonBrightnessUp exec ~/.local/bin/brightness-control.sh set '2%+'
+
+
+
+# Resize mode
+mode "resize" {
+    bindsym j resize shrink width 2px
+    bindsym k resize grow height 2px
+    bindsym l resize shrink height 2px
+    bindsym semicolon resize grow width 2px
+
+    bindsym Left  resize shrink width 2px
+    bindsym Down  resize grow height 2px
+    bindsym Up    resize shrink height 2px
+    bindsym Right resize grow width 2px
+
+    bindsym Return mode "default"
+    bindsym Escape mode "default"
+    bindsym $mod+r mode "default"
+}
+bindsym $mod+r mode "resize"
+
+bindsym $mod+minus scratchpad show
+bindsym $mod+Shift+minus move scratchpad
+
+bindsym $mod+1 workspace $ws1
+bindsym $mod+2 workspace $ws2
+bindsym $mod+3 workspace $ws3
+bindsym $mod+4 workspace $ws4
+bindsym $mod+5 workspace $ws5
+bindsym $mod+6 workspace $ws6
+bindsym $mod+7 workspace $ws7
+bindsym $mod+8 workspace $ws8
+bindsym $mod+9 workspace $ws9
+bindsym $mod+0 workspace $ws10
+
+bindsym $mod+Shift+1 move container to workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4
+bindsym $mod+Shift+5 move container to workspace $ws5
+bindsym $mod+Shift+6 move container to workspace $ws6
+bindsym $mod+Shift+7 move container to workspace $ws7
+bindsym $mod+Shift+8 move container to workspace $ws8
+bindsym $mod+Shift+9 move container to workspace $ws9
+bindsym $mod+Shift+0 move container to workspace $ws10
+
+
+
+
+# ---------------------------
+# Bar
+# ---------------------------
+bar {
+    status_command i3blocks -c ~/.config/i3blocks/config
+    pango_markup enabled
+    font pango:JetBrainsMono Nerd Font $bar-font-size
+    height $bar-hight
+    position top
+    tray_output none
+
+    colors {
+        # 40% transparent bar background (0x99 alpha = 60% opacity)
+        background         #11111b99
+        statusline         #cdd6f4
+        separator          #313244
+        focused_workspace  #1e1e2e #1e1e2e #cdd6f4
+        active_workspace   #181825 #181825 #6c7086
+        inactive_workspace #11111b #11111b #585b70
+        urgent_workspace   #f38ba8 #f38ba8 #11111b
+        binding_mode       #a6e3a1 #a6e3a1 #11111b
+    }
+}
+
+# ---------------------------
+# Autostart
+# ---------------------------
+
+exec_always ~/.local/bin/startup-session.sh
+input type:keyboard xkb_numlock enabled
+bindsym XF86RFKill exec nmcli radio wifi toggle
+# Don't suspend when the laptop lid is closed
+exec swayidle -w \
+    timeout 300 'swaylock -f -c 2f343f' \
+    timeout 600 'swaymsg "output * dpms off"' \
+    resume 'swaymsg "output * dpms on"' \
+    before-sleep 'swaylock -f -c 2f343f'
+
+# Ignore the laptop lid switch
+bindswitch --reload --locked lid:off exec true
+bindswitch --reload --locked lid:on exec true

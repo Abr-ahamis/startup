@@ -1,0 +1,15 @@
+show=drun
+location=bottom_left
+width=420
+height=520
+matching=strict-contains
+sort_order=alphabetical
+insensitive=true
+allow_images=true
+allow_markup=false
+hide_scroll=true
+hide_search=false
+gtk_dark=true
+normal_window=false
+layer=top
+image_size=24
