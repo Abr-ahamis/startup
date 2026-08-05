@@ -196,7 +196,8 @@ run_config_files() {
     fi
 
     # Append user aliases and helper function to .zshrc if not already present.
-    run_as_target bash -lc 'grep -q "alias startpro" "$HOME/.zshrc" 2>/dev/null || cat >> "$HOME/.zshrc" <<'ZSHRC'
+    if ! run_as_target bash -lc "grep -q 'alias startpro' \"\$HOME/.zshrc\" 2>/dev/null"; then
+      run_as_target bash -lc "cat >> \"\$HOME/.zshrc\" <<'ZSHRC'
 alias startpro='mkdir -p ~/pro/{ctf/{htb/{challenges,machines,sherlocks,start},thm},proje,repo}'
 alias pro='cd ~/pro'
 alias ctf='cd ~/pro/ctf'
@@ -213,12 +214,13 @@ doomnow() {
   nmcli networking off 2>/dev/null || true
 
   # stop common scripts/processes started by your user
-  pkill -TERM -u "$USER" -f 'python|python3|bash|sh|zsh|fish|node|perl|ruby|cargo run|go run|pipx|venv' 2>/dev/null || true
+  pkill -TERM -u "\$USER" -f 'python|python3|bash|sh|zsh|fish|node|perl|ruby|cargo run|go run|pipx|venv' 2>/dev/null || true
 
   # give them a moment, then force-kill leftovers
   sleep 2
-  pkill -KILL -u "$USER" -f 'python|python3|bash|sh|zsh|fish|node|perl|ruby|cargo run|go run|pipx|venv' 2>/dev/null || true
+  pkill -KILL -u "\$USER" -f 'python|python3|bash|sh|zsh|fish|node|perl|ruby|cargo run|go run|pipx|venv' 2>/dev/null || true
 }
-ZSHRC'
+ZSHRC"
+    fi
   fi
 }

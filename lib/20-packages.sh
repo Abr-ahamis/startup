@@ -49,15 +49,13 @@ package_progress() {
   local package="$1" percent="$2" state="$3" filled empty bar=''
   filled=$((percent / 5)); empty=$((20 - filled))
   bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
-  printf '\r[?] %-20s [%s] %3d%% %s' "$package" "$bar" "$percent" "$state"
+  printf '\r%-16s [%s] %3d%%  %s' "$package:" "$bar" "$percent" "$state"
 }
 
 install_package() {
   local package="$1" pid percent=0 rc
   case "$PKG_MANAGER" in
     apt)
-      # sudo is authenticated before package jobs are started.  Starting it in
-      # a separate session can lose that context and make every package fail.
       if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
         run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --reinstall --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
       else
@@ -65,14 +63,18 @@ install_package() {
       fi
       ;;
     pacman)
-      if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then run_as_root timeout --foreground 20m pacman -S --noconfirm "$package"; else run_as_root timeout --foreground 20m pacman -S --needed --noconfirm "$package"; fi >>"$SETUP_LOG_FILE" 2>&1 &
+      if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
+        run_as_root timeout --foreground 20m pacman -S --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 &
+      else
+        run_as_root timeout --foreground 20m pacman -S --needed --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 &
+      fi
       ;;
   esac
   pid=$!
   SETUP_ACTIVE_PID="$pid"
   printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"
   while kill -0 "$pid" 2>/dev/null; do
-    package_progress "$package" "$percent" "installing"
+    package_progress "$package" "$percent" "Installing"
     (( percent < 90 )) && percent=$((percent + 5))
     sleep 0.2
   done
@@ -80,53 +82,26 @@ install_package() {
   SETUP_ACTIVE_PID=""
   rm -f -- "$SETUP_ACTIVE_PID_FILE"
   if (( rc == 0 )) && package_installed "$package"; then
-    package_progress "$package" 100 "installed"
+    package_progress "$package" 100 "Installed"
     printf '\n'
+    ok "$package installed"
     return 0
   fi
-  package_progress "$package" 100 "failed"
+  package_progress "$package" 100 "Failed"
   printf '\n'
+  warn "$package failed to install"
   return 1
 }
 
 install_packages() {
-  local package failed=0 rc
+  local package failed=0
   (( $# )) || return 0
-  # APT resolves dependencies and downloads much faster in one transaction.
-  # Keep it attached to this terminal's authenticated sudo session; never run
-  # concurrent APT commands.
-  if [[ "$PKG_MANAGER" == apt ]]; then
-    if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
-      run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get \
-        -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" \
-        -o Dpkg::Use-Pty=0 -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
-        install -y --reinstall --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1 &
-    else
-      run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get \
-        -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" \
-        -o Dpkg::Use-Pty=0 -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
-        install -y --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1 &
-    fi
-    pid=$!
-    local percent=0
-    while kill -0 "$pid" 2>/dev/null; do
-      package_progress "APT" "$percent" "installing"
-      (( percent < 90 )) && percent=$((percent + 5))
-      sleep 0.2
-    done
-    wait "$pid"
-    rc=$?
-    if (( rc == 0 )); then
-      package_progress "APT" 100 "installed"
-    else
-      package_progress "APT" 100 "failed"
-    fi
-    printf '\n'
-    return "$rc"
-  fi
   for package in "$@"; do
     install_package "$package" || failed=1
   done
+  if (( failed == 0 )); then
+    printf '[%s] 100%% Package installation complete\n' "$(printf '%*s' 22 '' | tr ' ' '#')"
+  fi
   return "$failed"
 }
 
