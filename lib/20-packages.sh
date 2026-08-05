@@ -222,10 +222,15 @@ run_packages() {
   if (( ${#MISSING_PACKAGES[@]} )); then
     info "Installing ${#MISSING_PACKAGES[@]} missing package(s). Detailed APT output: $SETUP_LOG_FILE"
     if ! install_packages "${MISSING_PACKAGES[@]}"; then
-      warn "Package installation failed; repairing the package manager and retrying once."
+      warn "Package installation failed; attempting APT repair and retrying once."
       if [[ "$PKG_MANAGER" == apt ]]; then
+        # Run a conservative repair sequence to recover from interrupted APT/dpkg states.
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get clean >>"$SETUP_LOG_FILE" 2>&1 || true
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoclean >>"$SETUP_LOG_FILE" 2>&1 || true
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
         run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
-        run_as_root apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing >>"$SETUP_LOG_FILE" 2>&1 || true
+        run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >>"$SETUP_LOG_FILE" 2>&1 || true
       fi
       install_packages "${MISSING_PACKAGES[@]}" || warn "Package installation still has failures; inspect $SETUP_LOG_FILE."
     fi

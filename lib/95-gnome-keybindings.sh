@@ -125,6 +125,7 @@ run_gnome_desktop_setup() {
   register_gnome_keybinding startup-key-help '<Shift>F1' 'Sway key help' "$TARGET_HOME/.config/sway/scripts/key-help-wofi.sh" || true
   register_gnome_keybinding startup-wifi XF86RFKill 'Toggle Wi-Fi' 'nmcli radio wifi toggle' || true
   run_as_target "${env_args[@]}" gsettings set org.gnome.settings-daemon.plugins.media-keys volume-mute "['XF86AudioMute']" || true
+  run_as_target "${env_args[@]}" gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false || true
   run_as_target "${env_args[@]}" gsettings set org.gnome.desktop.interface text-scaling-factor 0.7 || true
   ok "GNOME desktop settings and keybindings configured"
 }
