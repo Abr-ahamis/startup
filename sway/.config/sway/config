@@ -92,6 +92,9 @@ bindsym Ctrl+Alt+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_me
 bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_menu.sh; exec bash"
 bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 
+bindsym Ctrl+Shift+Mod4+q exec systemctl poweroff
+bindsym Ctrl+Shift+Mod4+a exec systemctl reboot
+bindsym Ctrl+Shift+Mod4+s exec systemctl suspend
 
 bindsym $mod+Shift+q kill
 bindsym $mod+f fullscreen toggle
