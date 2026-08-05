@@ -8,46 +8,6 @@
 if [[ -n "${__SETUP_REPORT_LOADED:-}" ]]; then return 0; fi
 __SETUP_REPORT_LOADED=1
 
-start_sway_after_setup() {
-  local runtime="/run/user/$TARGET_UID" socket desktop backend sway_log="$SETUP_BASE_DIR/sway-session.log"
-  local -a sway_env
-  [[ -d "$runtime" ]] || runtime="${XDG_RUNTIME_DIR:-/run/user/$TARGET_UID}"
-  mkdir -p -m 700 "$SETUP_BASE_DIR" 2>/dev/null || true
-  desktop=" ${XDG_CURRENT_DESKTOP:-} ${DESKTOP_SESSION:-} "
-  if [[ "$desktop" == *sway* || "$desktop" == *Sway* ]]; then
-    socket="$(find "$runtime" -maxdepth 1 -type s -name 'sway-ipc.*.sock' -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {print $2}')"
-    if [[ -n "$socket" ]] && run_as_target env XDG_RUNTIME_DIR="$runtime" SWAYSOCK="$socket" swaymsg reload >>"$SETUP_LOG_FILE" 2>&1; then
-      _setup_log_write INFO "Sway configuration reloaded successfully."
-    else
-      _setup_log_write WARN "Sway reload could not be verified; the active session was left untouched."
-    fi
-    return 0
-  fi
-  command -v sway >/dev/null 2>&1 || { _setup_log_write WARN "Sway is not installed; background launch was skipped."; return 0; }
-  if [[ -n "${WAYLAND_DISPLAY:-}" && "${XDG_SESSION_TYPE:-}" == wayland ]]; then
-    backend=wayland
-  elif [[ -n "${DISPLAY:-}" ]]; then
-    backend=x11
-  else
-    _setup_log_write INFO "No graphical compositor is available; background Sway launch was skipped."
-    return 0
-  fi
-  [[ -d "$runtime" ]] || { _setup_log_write WARN "Sway runtime directory is unavailable: $runtime"; return 0; }
-  sway_env=(env "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" "XDG_RUNTIME_DIR=$runtime" XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland "WLR_BACKENDS=$backend")
-  if [[ "$backend" == wayland ]]; then
-    sway_env+=("WAYLAND_DISPLAY=$WAYLAND_DISPLAY" WLR_WAYLAND_OUTPUTS=1)
-  else
-    sway_env+=("DISPLAY=$DISPLAY" WLR_X11_OUTPUTS=1)
-  fi
-  _setup_log_write INFO "Starting a nested Sway window under the current desktop."
-  if (( EUID == 0 )); then
-    runuser -u "$TARGET_USER" -- "${sway_env[@]}" nohup setsid sway >>"$sway_log" 2>&1 </dev/null &
-  else
-    "${sway_env[@]}" nohup setsid sway >>"$sway_log" 2>&1 </dev/null &
-  fi
-  return 0
-}
-
 optional_command_installed() {
   local command_name="${1:-}"
   command -v "$command_name" >/dev/null 2>&1 || [[ -x "$TARGET_HOME/.local/bin/$command_name" ]]
@@ -206,6 +166,8 @@ run_report() {
     run_users
   fi
 
+  # The only automatic Sway reload: after the completion banner and directly
+  # before the optional-tools prompt.  It does not start, stop, or nest Sway.
   reload_target_sway || true
 
   # Optional tools menu
@@ -253,10 +215,11 @@ run_report() {
   echo "Config Path  : $TARGET_HOME/.config"
   echo "Fonts Cached : Yes"
   echo "Wallpapers   : ${#replaced[@]} replaced"
+  echo "Backups      :"
+  [[ -d "${SETUP_BACKUP_DIR:-}" ]] && echo "  Installer  : $SETUP_BACKUP_DIR"
+  [[ -d "${SETUP_WALLPAPER_BACKUP_DIR:-}" ]] && echo "  Wallpapers : $SETUP_WALLPAPER_BACKUP_DIR"
+  [[ -d "${security_backup_dir:-}" ]] && echo "  Security   : $security_backup_dir"
   echo "Log file     : $SETUP_BASE_DIR/"
   printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
 
-  # Reload the active Sway session, or open a nested wlroots window when the
-  # installer is being run from another graphical desktop.
-  start_sway_after_setup || true
 }

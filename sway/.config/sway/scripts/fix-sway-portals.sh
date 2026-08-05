@@ -45,20 +45,21 @@ org.freedesktop.impl.portal.ScreenCast=wlr
 EOF
 }
 
-fix_sway_config() {
-  info "Fixing Sway environment export..."
-  if [[ -f "$SWAY_CFG" ]] && ! grep -q "fix-sway-portals start" "$SWAY_CFG"; then
-    backup_if_exists "$SWAY_CFG"
-    cat >> "$SWAY_CFG" <<'EOF'
-
-# fix-sway-portals start
-command -v dbus-update-activation-environment >/dev/null 2>&1 && \
-  dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway || true
-command -v systemctl >/dev/null 2>&1 && \
-  systemctl --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP || true
-# fix-sway-portals end
-EOF
-  fi
+remove_legacy_sway_config_block() {
+  # Older versions appended raw shell commands to sway/config.  Sway reads
+  # those as configuration directives and reports errors.  Environment export
+  # belongs in startup-session.sh, not in the compositor configuration.
+  local temporary
+  [[ -f "$SWAY_CFG" ]] || return 0
+  grep -q '^# fix-sway-portals start$' "$SWAY_CFG" || return 0
+  temporary="$(mktemp "${SWAY_CFG}.XXXXXX")" || return 1
+  awk '
+    /^# fix-sway-portals start$/ { skipping=1; next }
+    /^# fix-sway-portals end$/ { skipping=0; next }
+    !skipping { print }
+  ' "$SWAY_CFG" >"$temporary" || { rm -f -- "$temporary"; return 1; }
+  mv -- "$temporary" "$SWAY_CFG"
+  info "Removed the obsolete portal block from the Sway configuration."
 }
 
 clear_cache() {
@@ -101,7 +102,7 @@ remove_all() {
 case "$ACTION" in
   setup)
     write_configs
-    fix_sway_config
+    remove_legacy_sway_config_block
     clear_cache
     restart_services
     status

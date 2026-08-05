@@ -51,6 +51,7 @@ Options:
 Environment:
   SUDO_USER / USER  Target user (defaults to $USER)
   HOME              Used as fallback for target home
+  SETUP_APT_LOCK_TIMEOUT  Seconds to wait for an APT lock (default: 20)
 
 Stages (in order):
   1. System detection
@@ -139,7 +140,6 @@ if [[ "$SETUP_ONLY_SECURITY" != "1" ]]; then
   run_config_files
   stage "Wallpapers"
   run_wallpapers
-  reload_target_sway || true
   stage "User services and Sway"
   run_services
 fi

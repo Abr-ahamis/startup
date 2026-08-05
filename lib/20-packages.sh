@@ -6,6 +6,9 @@ __SETUP_PACKAGES_LOADED=1
 
 SETUP_BACKUP_DIR="$SETUP_BASE_DIR/installer-backups/$SETUP_TIMESTAMP"
 FAILED_REQUIRED_PACKAGES=() REQUIRED_PACKAGES=() MISSING_PACKAGES=()
+# A short default prevents an installer appearing stuck behind another package
+# manager.  Override with SETUP_APT_LOCK_TIMEOUT=SECONDS when needed.
+SETUP_APT_LOCK_TIMEOUT="${SETUP_APT_LOCK_TIMEOUT:-20}"
 
 package_for() {
   local feature="$1"
@@ -38,10 +41,12 @@ install_package() {
   local package="$1" pid percent=0 rc
   case "$PKG_MANAGER" in
     apt)
-      if (( EUID == 0 )); then
-        if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then setsid timeout --foreground 20m apt-get -o DPkg::Lock::Timeout=0 install -y --reinstall --no-install-recommends "$package"; else setsid timeout --foreground 20m apt-get -o DPkg::Lock::Timeout=0 install -y --no-install-recommends "$package"; fi >>"$SETUP_LOG_FILE" 2>&1 &
+      # sudo is authenticated before package jobs are started.  Starting it in
+      # a separate session can lose that context and make every package fail.
+      if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
+        run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --reinstall --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
       else
-        if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then setsid sudo timeout --foreground 20m apt-get -o DPkg::Lock::Timeout=0 install -y --reinstall --no-install-recommends "$package"; else setsid sudo timeout --foreground 20m apt-get -o DPkg::Lock::Timeout=0 install -y --no-install-recommends "$package"; fi >>"$SETUP_LOG_FILE" 2>&1 &
+        run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
       fi
       ;;
     pacman)
@@ -70,8 +75,30 @@ install_package() {
 }
 
 install_packages() {
-  local package failed=0
+  local package failed=0 rc
   (( $# )) || return 0
+  # APT resolves dependencies and downloads much faster in one transaction.
+  # Keep it attached to this terminal's authenticated sudo session; never run
+  # concurrent APT commands.
+  if [[ "$PKG_MANAGER" == apt ]]; then
+    info "Installing $# package(s) in one APT transaction."
+    if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
+      run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get \
+        -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" \
+        -o Dpkg::Use-Pty=0 -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
+        install -y --reinstall --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1
+    else
+      run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get \
+        -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" \
+        -o Dpkg::Use-Pty=0 -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
+        install -y --no-install-recommends "$@" >>"$SETUP_LOG_FILE" 2>&1
+    fi
+    rc=$?
+    if (( rc != 0 )); then
+      for package in "$@"; do package_progress "$package" 100 "failed"; printf '\n'; done
+    fi
+    return "$rc"
+  fi
   for package in "$@"; do
     install_package "$package" || failed=1
   done
@@ -84,7 +111,7 @@ remove_packages() {
   for package in "$@"; do
     case "$PKG_MANAGER" in
       apt)
-        if (( EUID == 0 )); then setsid timeout --foreground 20m apt-get -o DPkg::Lock::Timeout=0 remove -y "$package" >>"$SETUP_LOG_FILE" 2>&1 & else setsid sudo timeout --foreground 20m apt-get -o DPkg::Lock::Timeout=0 remove -y "$package" >>"$SETUP_LOG_FILE" 2>&1 & fi
+        run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 remove -y "$package" >>"$SETUP_LOG_FILE" 2>&1 &
         ;;
       pacman)
         if (( EUID == 0 )); then setsid timeout --foreground 20m pacman -Rns --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 & else setsid sudo timeout --foreground 20m pacman -Rns --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 & fi
@@ -137,19 +164,48 @@ backup_package_selections() {
   esac
 }
 
+check_package_disk_space() {
+  local available_kib
+  available_kib="$(df -Pk /var/cache/apt 2>/dev/null | awk 'NR == 2 { print $4 }')"
+  [[ "$available_kib" =~ ^[0-9]+$ ]] || return 0
+  if (( available_kib < 524288 )); then
+    warn "Only $((available_kib / 1024)) MiB is free on the package filesystem. Free at least 512 MiB, then run the installer again."
+    return 1
+  fi
+}
+
 run_packages() {
+  local backup_ready=0
   cleanup_previous_package_process
   section_setup "Pre-install backup"
   if ! run_as_root install -d -m 700 "$SETUP_BACKUP_DIR"; then
     warn "Cannot create installer backup directory: $SETUP_BACKUP_DIR. Package installation will continue safely."
   else
-    ok "Backup directory ready: $SETUP_BACKUP_DIR"
+    _setup_log_write INFO "Backup directory ready: $SETUP_BACKUP_DIR"
+    backup_ready=1
     backup_package_selections
   fi
   if (( ${#SETUP_REMOVE_PACKAGES[@]} )); then
     remove_packages "${SETUP_REMOVE_PACKAGES[@]}" || warn "One or more requested removals failed"
   fi
   section_setup "Installing REQUIRED packages"
+  # Refresh package metadata only (never upgrade installed packages), and
+  # repair interrupted Debian transactions before installing anything.
+  if [[ "$PKG_MANAGER" == apt ]]; then
+    check_package_disk_space || return 1
+    info "Refreshing configured official APT repositories (no repositories are added or changed)."
+    run_as_root env DEBIAN_FRONTEND=noninteractive timeout 5m apt-get \
+      -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Acquire::Retries=3 -o Acquire::Queue-Mode=host \
+      update >>"$SETUP_LOG_FILE" 2>&1 || warn "APT package-index refresh failed; cached metadata will be used."
+    if [[ -n "$(run_as_root dpkg --audit 2>/dev/null || true)" ]]; then
+      warn "An interrupted dpkg transaction was detected; repairing it before installation."
+      run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
+      run_as_root apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || warn "APT dependency repair failed; installation will continue."
+    fi
+    # Authenticate while attached to the terminal; package jobs run in the
+    # background and must never block waiting for a hidden sudo prompt.
+    run_as_root true || return 1
+  fi
   collect_required_packages
   MISSING_PACKAGES=()
   local total="${#REQUIRED_PACKAGES[@]}" index=0 pkg
@@ -164,7 +220,12 @@ run_packages() {
   if (( ${#MISSING_PACKAGES[@]} )); then
     info "Installing ${#MISSING_PACKAGES[@]} missing package(s). Detailed APT output: $SETUP_LOG_FILE"
     if ! install_packages "${MISSING_PACKAGES[@]}"; then
-      warn "Package installation failed. No retry was started; inspect $SETUP_LOG_FILE and resolve any package-manager lock first."
+      warn "Package installation failed; repairing the package manager and retrying once."
+      if [[ "$PKG_MANAGER" == apt ]]; then
+        run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
+        run_as_root apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
+      fi
+      install_packages "${MISSING_PACKAGES[@]}" || warn "Package installation still has failures; inspect $SETUP_LOG_FILE."
     fi
     for pkg in "${MISSING_PACKAGES[@]}"; do
       if package_installed "$pkg"; then ok "$pkg installed and verified"; else warn "$pkg failed to install"; FAILED_REQUIRED_PACKAGES+=("$pkg"); fi
@@ -172,7 +233,15 @@ run_packages() {
   else
     ok "All $total required packages are already installed."
   fi
-  if [[ -d "$SETUP_BACKUP_DIR" ]]; then
-    printf 'Distro: %s\nRequired: %s\nMissing before install: %s\nFailed: %s\n' "$DISTRO_PRETTY" "${REQUIRED_PACKAGES[*]}" "${MISSING_PACKAGES[*]:-(none)}" "${FAILED_REQUIRED_PACKAGES[*]:-(none)}" >"$SETUP_BACKUP_DIR/install-report.txt" || warn "Could not write package report"
+  if (( backup_ready )); then
+    # The backup directory is intentionally root-only.  The elevated tee owns
+    # the redirection, avoiding the old "Permission denied" report failure.
+    if ! printf 'Distro: %s\nRequired: %s\nMissing before install: %s\nFailed: %s\n' \
+      "$DISTRO_PRETTY" "${REQUIRED_PACKAGES[*]}" "${MISSING_PACKAGES[*]:-(none)}" "${FAILED_REQUIRED_PACKAGES[*]:-(none)}" \
+      | run_as_root tee "$SETUP_BACKUP_DIR/install-report.txt" >/dev/null; then
+      warn "Could not write package report"
+    else
+      run_as_root chmod 600 "$SETUP_BACKUP_DIR/install-report.txt" || warn "Could not secure package report permissions"
+    fi
   fi
 }

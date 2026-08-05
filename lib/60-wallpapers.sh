@@ -95,6 +95,7 @@ run_wallpapers() {
 
   local root="${STARTUP_BACKGROUND_ROOT:-/usr/share/backgrounds}"
   local backup_dir="$SETUP_BASE_DIR/wallpaper-backups/$SETUP_TIMESTAMP"
+  SETUP_WALLPAPER_BACKUP_DIR="$backup_dir"
   local i source source_name target label
 
   info "Scanning $root/* for image files..."
@@ -123,7 +124,5 @@ run_wallpapers() {
     "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "${#replaced[@]}"
   if (( ${#skipped[@]} )); then
     warn "Wallpaper files skipped: ${#skipped[@]}; backups are in $backup_dir"
-  else
-    info "Wallpaper backups: $backup_dir"
   fi
 }
