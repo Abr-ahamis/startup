@@ -182,4 +182,43 @@ run_config_files() {
   done
   configure_backlight_access || true
   ok "Permissions updated"
+
+  # Ensure zsh is available and set it as the default shell for the target user.
+  if command -v zsh >/dev/null 2>&1; then
+    zsh_path="$(command -v zsh)"
+    if ! run_as_root grep -qxF "$zsh_path" /etc/shells 2>/dev/null; then
+      run_as_root bash -c "echo '$zsh_path' >> /etc/shells" || warn "Could not add $zsh_path to /etc/shells"
+    fi
+    if run_as_root chsh -s "$zsh_path" "$TARGET_USER"; then
+      ok "Default shell for $TARGET_USER set to zsh"
+    else
+      warn "Could not change default shell to zsh for $TARGET_USER"
+    fi
+
+    # Append user aliases and helper function to .zshrc if not already present.
+    run_as_target bash -lc 'grep -q "alias startpro" "$HOME/.zshrc" 2>/dev/null || cat >> "$HOME/.zshrc" <<'ZSHRC'
+alias startpro='mkdir -p ~/pro/{ctf/{htb/{challenges,machines,sherlocks,start},thm},proje,repo}'
+alias pro='cd ~/pro'
+alias ctf='cd ~/pro/ctf'
+alias htb='cd ~/pro/ctf/htb'
+alias thm='cd ~/pro/ctf/thm'
+alias proje='cd ~/pro/proje'
+alias repo='cd ~/pro/repo'
+alias by='systemctl poweroff'
+alias zz='systemctl suspend'
+alias rb='systemctl reboot'
+doomnow() {
+  # turn off Wi-Fi
+  nmcli radio wifi off 2>/dev/null || true
+  nmcli networking off 2>/dev/null || true
+
+  # stop common scripts/processes started by your user
+  pkill -TERM -u "$USER" -f 'python|python3|bash|sh|zsh|fish|node|perl|ruby|cargo run|go run|pipx|venv' 2>/dev/null || true
+
+  # give them a moment, then force-kill leftovers
+  sleep 2
+  pkill -KILL -u "$USER" -f 'python|python3|bash|sh|zsh|fish|node|perl|ruby|cargo run|go run|pipx|venv' 2>/dev/null || true
+}
+ZSHRC'
+  fi
 }

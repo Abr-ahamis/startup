@@ -23,8 +23,8 @@ package_for() {
     debian:audio) echo pipewire pipewire-pulse wireplumber;; arch:audio) echo pipewire pipewire-pulse wireplumber;;
     debian:clipboard|arch:clipboard) echo cliphist;;
     debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman sudo grub2-common;;
-    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman;;
+    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman sudo zsh grub2-common;;
+    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman zsh;;
     *) return 1;;
   esac
 }
