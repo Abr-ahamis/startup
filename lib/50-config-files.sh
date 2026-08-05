@@ -34,13 +34,23 @@ validate_managed_tree() {
 configure_backlight_access() {
   local rule_file="/etc/udev/rules.d/90-startup-backlight.rules"
   local sudoers_file="/etc/sudoers.d/startup-brightness"
-  local temp_file sudoers_temp brightnessctl_path group="video"
+  local temp_file sudoers_temp brightnessctl_path visudo_path group="video"
 
-  if ! command -v brightnessctl >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; then
+  # `sudo ./main.sh` can retain a user PATH without /usr/sbin.  Resolve the
+  # standard system locations explicitly before relying on PATH.
+  brightnessctl_path="$(command -v brightnessctl 2>/dev/null || true)"
+  [[ -x /usr/bin/brightnessctl ]] && brightnessctl_path=/usr/bin/brightnessctl
+  visudo_path="$(command -v visudo 2>/dev/null || true)"
+  [[ -x /usr/sbin/visudo ]] && visudo_path=/usr/sbin/visudo
+  if [[ -z "$brightnessctl_path" || -z "$visudo_path" ]]; then
     info "Installing brightness permission prerequisites."
     install_packages brightnessctl sudo || warn "Could not install brightnessctl and sudo; brightness permissions were skipped."
   fi
-  if ! command -v brightnessctl >/dev/null 2>&1 || ! command -v visudo >/dev/null 2>&1; then
+  brightnessctl_path="$(command -v brightnessctl 2>/dev/null || true)"
+  [[ -x /usr/bin/brightnessctl ]] && brightnessctl_path=/usr/bin/brightnessctl
+  visudo_path="$(command -v visudo 2>/dev/null || true)"
+  [[ -x /usr/sbin/visudo ]] && visudo_path=/usr/sbin/visudo
+  if [[ -z "$brightnessctl_path" || -z "$visudo_path" ]]; then
     warn "brightnessctl or visudo is unavailable; passwordless brightness control was not configured."
     return 1
   fi
@@ -83,8 +93,7 @@ configure_backlight_access() {
   # Sway keybindings cannot answer an invisible sudo password prompt.  Allow
   # only the brightnessctl binary for this user, and validate the rule before
   # installing it.  Volume and other session controls remain unprivileged.
-  brightnessctl_path="$(command -v brightnessctl)"
-  if command -v visudo >/dev/null 2>&1 && [[ -n "$brightnessctl_path" ]]; then
+  if [[ -n "$visudo_path" && -n "$brightnessctl_path" ]]; then
     run_as_root install -d -m 755 /etc/sudoers.d || {
       warn "Could not create /etc/sudoers.d for the brightness rule."
       return 1
@@ -99,7 +108,7 @@ configure_backlight_access() {
       return 1
     fi
     run_as_root chmod 440 "$sudoers_temp"
-    if run_as_root visudo -cf "$sudoers_temp" >>"$SETUP_LOG_FILE" 2>&1; then
+    if run_as_root "$visudo_path" -cf "$sudoers_temp" >>"$SETUP_LOG_FILE" 2>&1; then
       run_as_root mv -f -- "$sudoers_temp" "$sudoers_file"
     else
       run_as_root rm -f -- "$sudoers_temp"

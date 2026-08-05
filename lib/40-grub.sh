@@ -50,10 +50,27 @@ run_grub() {
   run_as_root find "$dest" -type f -name '*.sh' -exec chmod 755 {} + || return 1
   replace_or_add "GRUB_THEME" "\"$dest/theme.txt\"" || return 1
   run_as_root chmod 644 "$defaults"
-  local generator=""
-  command -v update-grub >/dev/null 2>&1 && generator=update-grub
-  command -v grub-mkconfig >/dev/null 2>&1 && [[ -z "$generator" ]] && generator='grub-mkconfig -o /boot/grub/grub.cfg'
-  if [[ -n "$generator" ]] && run_as_root bash -c "$generator" >>"$SETUP_LOG_FILE" 2>&1; then ok "GRUB theme installed and configuration regenerated"; else warn "Theme installed, but GRUB config was not regenerated. Run your distro's GRUB update command."; fi
+  # Debian keeps update-grub in grub2-common.  Install it here as a final
+  # self-repair in case the package stage was skipped or previously failed.
+  if ! run_as_root sh -c 'command -v update-grub >/dev/null 2>&1 || command -v grub-mkconfig >/dev/null 2>&1' && [[ "$PKG_MANAGER" == apt ]]; then
+    info "Installing grub2-common so the GRUB configuration can be regenerated."
+    install_packages grub2-common || warn "Could not install grub2-common."
+  fi
+  if run_as_root sh -c 'command -v update-grub >/dev/null 2>&1'; then
+    if run_as_root update-grub >>"$SETUP_LOG_FILE" 2>&1; then
+      ok "GRUB theme installed and configuration regenerated"
+    else
+      warn "update-grub failed; inspect $SETUP_LOG_FILE for its exact error."
+    fi
+  elif run_as_root sh -c 'command -v grub-mkconfig >/dev/null 2>&1'; then
+    if run_as_root grub-mkconfig -o /boot/grub/grub.cfg >>"$SETUP_LOG_FILE" 2>&1; then
+      ok "GRUB theme installed and configuration regenerated"
+    else
+      warn "grub-mkconfig failed; inspect $SETUP_LOG_FILE for its exact error."
+    fi
+  else
+    warn "No GRUB configuration generator is available after the repair attempt."
+  fi
   if command -v grub-script-check >/dev/null 2>&1 && ! run_as_root grub-script-check /boot/grub/grub.cfg >>"$SETUP_LOG_FILE" 2>&1; then
     warn "Generated GRUB configuration failed validation; restoring the previous defaults file."
     run_as_root cp -a "$SETUP_BACKUP_DIR/grub.defaults.bak" "$defaults" 2>/dev/null || true

@@ -182,6 +182,9 @@ run_packages() {
   if ! run_as_root install -d -m 700 "$SETUP_BACKUP_DIR"; then
     warn "Cannot create installer backup directory: $SETUP_BACKUP_DIR. Package installation will continue safely."
   else
+    # Ensure the installer backup directory is owned by the target user so
+    # non-root steps can read/write reports and backups when appropriate.
+    run_as_root chown -R "$TARGET_USER:$TARGET_GROUP" "$SETUP_BACKUP_DIR" || warn "Could not set ownership on $SETUP_BACKUP_DIR"
     _setup_log_write INFO "Backup directory ready: $SETUP_BACKUP_DIR"
     backup_ready=1
     backup_package_selections
