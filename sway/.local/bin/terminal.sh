@@ -40,7 +40,7 @@ gsettings set "$PROFILE_PATH" use-transparent-background true || true
 # 0 = fully transparent
 # 100 = fully opaque
 # 50 = 50% transparent
-gsettings set "$PROFILE_PATH" background-transparency-percent 50 || true
+gsettings set "$PROFILE_PATH" background-transparency-percent 20 || true
 
 if command -v systemctl >/dev/null 2>&1; then
     systemctl --user daemon-reload >/dev/null 2>&1 || true

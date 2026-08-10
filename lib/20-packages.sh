@@ -45,15 +45,9 @@ repair_apt() {
   fi
 }
 
-package_progress() {
-  local package="$1" percent="$2" state="$3" filled empty bar=''
-  filled=$((percent / 5)); empty=$((20 - filled))
-  bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
-  printf '\r%-16s [%s] %3d%%  %s' "$package:" "$bar" "$percent" "$state"
-}
-
 install_package() {
-  local package="$1" pid percent=0 rc
+  local package="$1" pid rc
+  _setup_log_write INFO "Installing package: $package (manager=$PKG_MANAGER)"
   case "$PKG_MANAGER" in
     apt)
       if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
@@ -73,23 +67,15 @@ install_package() {
   pid=$!
   SETUP_ACTIVE_PID="$pid"
   printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"
-  while kill -0 "$pid" 2>/dev/null; do
-    package_progress "$package" "$percent" "Installing"
-    (( percent < 90 )) && percent=$((percent + 5))
-    sleep 0.2
-  done
+  while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
   wait "$pid"; rc=$?
   SETUP_ACTIVE_PID=""
   rm -f -- "$SETUP_ACTIVE_PID_FILE"
   if (( rc == 0 )) && package_installed "$package"; then
-    package_progress "$package" 100 "Installed"
-    printf '\n'
     ok "$package installed"
     return 0
   fi
-  package_progress "$package" 100 "Failed"
-  printf '\n'
-  warn "$package failed to install"
+  warn "$package failed to install; see $SETUP_LOG_FILE"
   return 1
 }
 
@@ -99,14 +85,11 @@ install_packages() {
   for package in "$@"; do
     install_package "$package" || failed=1
   done
-  if (( failed == 0 )); then
-    printf '[%s] 100%% Package installation complete\n' "$(printf '%*s' 22 '' | tr ' ' '#')"
-  fi
   return "$failed"
 }
 
 remove_packages() {
-  local package failed=0 pid percent rc
+  local package failed=0 pid rc
   (( $# )) || return 0
   for package in "$@"; do
     case "$PKG_MANAGER" in
@@ -117,10 +100,10 @@ remove_packages() {
         if (( EUID == 0 )); then setsid timeout --foreground 20m pacman -Rns --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 & else setsid sudo timeout --foreground 20m pacman -Rns --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 & fi
         ;;
     esac
-    pid=$!; percent=0; SETUP_ACTIVE_PID="$pid"; printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"
-    while kill -0 "$pid" 2>/dev/null; do package_progress "$package" "$percent" "removing"; (( percent < 90 )) && percent=$((percent + 5)); sleep 0.2; done
+    pid=$!; SETUP_ACTIVE_PID="$pid"; printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"
+    while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
     wait "$pid"; rc=$?; SETUP_ACTIVE_PID=""; rm -f -- "$SETUP_ACTIVE_PID_FILE"
-    if (( rc == 0 )) && ! package_installed "$package"; then package_progress "$package" 100 "removed"; printf '\n'; else package_progress "$package" 100 "failed"; printf '\n'; failed=1; fi
+    if (( rc == 0 )) && ! package_installed "$package"; then ok "$package removed"; else warn "$package could not be removed; see $SETUP_LOG_FILE"; failed=1; fi
   done
   return "$failed"
 }

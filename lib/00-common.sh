@@ -61,7 +61,14 @@ SETUP_ACTIVE_PID_FILE="$SETUP_BASE_DIR/active-package.pid"
 SETUP_CLEANUP_DONE=0
 SETUP_STAGE_CURRENT=0
 SETUP_STAGE_TOTAL=9
+SETUP_PROGRESS_COMPLETED_WEIGHT=0
+SETUP_PROGRESS_ACTIVE_WEIGHT=0
+SETUP_PROGRESS_TOTAL_WEIGHT=1
 SETUP_ISSUES=()
+SETUP_DEFERRED=()
+SETUP_COMMAND_SEQUENCE=0
+SETUP_FINAL_SWAY_LAUNCHED=0
+SETUP_RELOGIN_REQUIRED=0
 
 # ---------- Logging (silent — goes to log file only) ----------
 _setup_log_write() {
@@ -72,6 +79,16 @@ _setup_log_write() {
   if [[ -d "$SETUP_LOG_DIR" ]]; then
     printf '%s [%s] %s\n' "$ts" "$level" "$msg" >> "$SETUP_LOG_FILE" 2>/dev/null || true
   fi
+}
+
+log_command() {
+  local label="$1"; shift
+  SETUP_COMMAND_SEQUENCE=$((SETUP_COMMAND_SEQUENCE + 1))
+  _setup_log_write COMMAND "#$SETUP_COMMAND_SEQUENCE $label: $(printf '%q ' "$@")"
+  "$@"
+  local rc=$?
+  _setup_log_write COMMAND "#$SETUP_COMMAND_SEQUENCE $label: exit $rc"
+  return "$rc"
 }
 
 _setup_init_log() {
@@ -100,12 +117,27 @@ elapsed_time() {
 }
 
 stage() {
-  local name="$1" percent
+  local name="$1" weight="${2:-1}" percent
+  # A stage's weight is credited only when the next stage begins. This keeps
+  # the displayed percentage tied to completed work, rather than elapsed time.
+  SETUP_PROGRESS_COMPLETED_WEIGHT=$((SETUP_PROGRESS_COMPLETED_WEIGHT + SETUP_PROGRESS_ACTIVE_WEIGHT))
+  SETUP_PROGRESS_ACTIVE_WEIGHT="$weight"
   SETUP_STAGE_CURRENT=$((SETUP_STAGE_CURRENT + 1))
-  percent=$((SETUP_STAGE_CURRENT * 100 / SETUP_STAGE_TOTAL))
+  percent=$((SETUP_PROGRESS_COMPLETED_WEIGHT * 100 / SETUP_PROGRESS_TOTAL_WEIGHT))
   printf '\n%s[%3d%% | %d/%d | elapsed %s]%s %s\n' \
     "$SETUP_COLOR_CYAN" "$percent" "$SETUP_STAGE_CURRENT" "$SETUP_STAGE_TOTAL" "$(elapsed_time)" "$SETUP_COLOR_RST" "$name"
   _setup_log_write STAGE "$SETUP_STAGE_CURRENT/$SETUP_STAGE_TOTAL $name"
+}
+
+finish_stage_progress() {
+  local percent
+  SETUP_PROGRESS_COMPLETED_WEIGHT=$((SETUP_PROGRESS_COMPLETED_WEIGHT + SETUP_PROGRESS_ACTIVE_WEIGHT))
+  SETUP_PROGRESS_ACTIVE_WEIGHT=0
+  percent=$((SETUP_PROGRESS_COMPLETED_WEIGHT * 100 / SETUP_PROGRESS_TOTAL_WEIGHT))
+  (( percent > 100 )) && percent=100
+  printf '%s[100%% | complete | elapsed %s]%s Required installation stages finished\n' \
+    "$SETUP_COLOR_CYAN" "$(elapsed_time)" "$SETUP_COLOR_RST"
+  _setup_log_write PROGRESS "100% required installation stages finished (calculated=$percent%)"
 }
 
 terminate_process_tree() {
@@ -140,6 +172,11 @@ setup_cleanup() {
   fi
   rm -f -- "$SETUP_ACTIVE_PID_FILE" 2>/dev/null || true
   [[ -d "$SETUP_RUNTIME_DIR" ]] && rm -rf -- "$SETUP_RUNTIME_DIR" 2>/dev/null || true
+  # run_report normally launches the requested final Sway command. Keep this
+  # fallback for an unexpected exit after the report module was loaded.
+  if declare -F launch_final_sway >/dev/null 2>&1; then
+    launch_final_sway
+  fi
   _setup_log_write INFO "Cleanup completed (exit $rc, elapsed $(elapsed_time))"
 }
 
@@ -189,6 +226,16 @@ warn() {
   printf '%s[WARN]%s %s\n' "$SETUP_COLOR_WARN" "$SETUP_COLOR_RST" "$msg" >&2
   _setup_log_write WARN "$msg"
   SETUP_ISSUES+=("[WARN] $msg")
+}
+
+# A deferred desktop-only action is neither a successful operation nor an
+# installer failure: it is reported in the final result without being promoted
+# to an unresolved error on headless/non-interactive installations.
+defer() {
+  local msg="$*"
+  printf '%s[INFO]%s Deferred: %s\n' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "$msg"
+  _setup_log_write DEFERRED "$msg"
+  SETUP_DEFERRED+=("$msg")
 }
 
 error() {
@@ -258,6 +305,15 @@ progress_bar() {
   printf '%s%s%s %d%%' "$SETUP_COLOR_CYAN" "$bar" "$SETUP_COLOR_RST" "$percent"
 }
 
+progress_stage_complete() {
+  local completed="$1" total="$2" label="$3"
+  (( total > 0 )) || total=1
+  local percent=$(( completed * 100 / total ))
+  progress_bar "$percent"
+  printf ' %d/%d %s\n' "$completed" "$total" "$label"
+  _setup_log_write PROGRESS "$completed/$total ($percent%) $label"
+}
+
 # ---------- Privilege helpers ----------
 run_as_root() {
   if (( EUID == 0 )); then
@@ -290,6 +346,60 @@ run_as_target() {
     fi
     sudo -u "$TARGET_USER" -H "$@"
   fi
+}
+
+target_runtime_dir() {
+  printf '/run/user/%s\n' "$TARGET_UID"
+}
+
+target_session_available() {
+  local runtime
+  runtime="$(target_runtime_dir)"
+  [[ -d "$runtime" && -S "$runtime/bus" ]]
+}
+
+target_wayland_display() {
+  local runtime candidate
+  runtime="$(target_runtime_dir)"
+  if [[ -n "${WAYLAND_DISPLAY:-}" && -S "$runtime/${WAYLAND_DISPLAY##*/}" ]]; then
+    printf '%s\n' "${WAYLAND_DISPLAY##*/}"
+    return 0
+  fi
+  candidate="$(find "$runtime" -maxdepth 1 -type s -name 'wayland-*' -printf '%T@ %f\n' 2>/dev/null | sort -nr | awk 'NR == 1 { print $2 }')"
+  [[ -n "$candidate" ]] && printf '%s\n' "$candidate"
+}
+
+target_sway_socket() {
+  local runtime socket
+  runtime="$(target_runtime_dir)"
+  for socket in "$runtime"/sway-ipc."$TARGET_UID".*.sock; do
+    [[ -S "$socket" ]] || continue
+    if run_as_target env "XDG_RUNTIME_DIR=$runtime" "SWAYSOCK=$socket" swaymsg -t get_version >/dev/null 2>&1; then
+      printf '%s\n' "$socket"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Execute against the target user's existing systemd/D-Bus session.  This is
+# required when the installer itself is launched through sudo: root's user bus
+# is not the desktop user's bus.
+run_as_target_session() {
+  local runtime wayland_display sway_socket desktop
+  local -a session_env
+  runtime="$(target_runtime_dir)"
+  target_session_available || return 1
+  session_env=(env \
+    "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" \
+    "XDG_RUNTIME_DIR=$runtime" "DBUS_SESSION_BUS_ADDRESS=unix:path=$runtime/bus")
+  wayland_display="$(target_wayland_display || true)"
+  [[ -n "$wayland_display" ]] && session_env+=("WAYLAND_DISPLAY=$wayland_display")
+  desktop="${XDG_CURRENT_DESKTOP:-}"
+  [[ -n "$desktop" ]] && session_env+=("XDG_CURRENT_DESKTOP=$desktop")
+  sway_socket="$(target_sway_socket || true)"
+  [[ -n "$sway_socket" ]] && session_env+=("SWAYSOCK=$sway_socket")
+  run_as_target "${session_env[@]}" "$@"
 }
 
 # ---------- Filesystem helpers ----------
@@ -351,9 +461,12 @@ current_uid="$(id -u)"
 current_euid="${EUID:-$current_uid}"
 
 can_manage_user_session=false
-if [[ "$current_euid" -eq "$TARGET_UID" && -n "${XDG_RUNTIME_DIR:-}" && "$XDG_RUNTIME_DIR" == "/run/user/$TARGET_UID" ]]; then
+if target_session_available; then
   can_manage_user_session=true
 fi
+_setup_log_write INFO "Execution identity: euid=$current_euid target_user=$TARGET_USER target_uid=$TARGET_UID target_home=$TARGET_HOME"
+_setup_log_write INFO "Target user session available: $can_manage_user_session (runtime=$(target_runtime_dir))"
+_setup_log_write INFO "Detected target Wayland display: $(target_wayland_display || printf 'none')"
 
 # ---------- Interactive prompt ----------
 prompt_yes_no() {

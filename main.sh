@@ -110,11 +110,14 @@ start_transcript_logging || true
 
 # Keep the progress denominator truthful for abbreviated runs.
 if [[ "$SETUP_ONLY_SECURITY" == "1" ]]; then
-  SETUP_STAGE_TOTAL=2
+  SETUP_STAGE_TOTAL=3
+  SETUP_PROGRESS_TOTAL_WEIGHT=22
 elif [[ "$SETUP_SKIP_SECURITY" == "1" ]]; then
   SETUP_STAGE_TOTAL=7
+  SETUP_PROGRESS_TOTAL_WEIGHT=90
 else
   SETUP_STAGE_TOTAL=8
+  SETUP_PROGRESS_TOTAL_WEIGHT=100
 fi
 
 # ---------- Run stages (no banner — System Info is the first output) ----------
@@ -130,26 +133,26 @@ fi
 
 run_distro
 if [[ "$SETUP_ONLY_SECURITY" != "1" ]]; then
-  stage "Package installation"
+  stage "Package installation" 45
   run_packages
-  stage "Optional autotiling"
+  stage "Optional autotiling" 5
   run_pipx
-  stage "GRUB theme"
+  stage "GRUB theme" 8
   run_grub
-  stage "User configuration"
+  stage "User configuration" 12
   run_config_files
-  stage "Wallpapers"
+  stage "Wallpapers" 8
   run_wallpapers
-  stage "User services and Sway"
-  run_services
 fi
 
-run_gnome_desktop_setup || warn "GNOME desktop settings could not be configured; see $SETUP_LOG_FILE"
-
 if [[ "$SETUP_SKIP_SECURITY" != "1" ]]; then
-  stage "Credential protection"
+  stage "Credential protection" 10
   run_security
 fi
 
-stage "Final report"
+stage "User services and Sway" 5
+run_services
+
+stage "Final report" 7
 run_report
+finish_stage_progress

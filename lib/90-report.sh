@@ -8,37 +8,19 @@
 if [[ -n "${__SETUP_REPORT_LOADED:-}" ]]; then return 0; fi
 __SETUP_REPORT_LOADED=1
 
-start_sway_preview() {
-  local runtime="/run/user/$TARGET_UID" sway_log="$SETUP_BASE_DIR/sway-preview.log"
-  local -a sway_env
-  # Preview only outside Sway. It never reloads, replaces, or nests an active
-  # Sway session.
-  pgrep -u "$TARGET_UID" -x sway >/dev/null 2>&1 && return 0
-  command -v sway >/dev/null 2>&1 || return 0
-  [[ -d "$runtime" ]] || return 0
-  # Start a small nested preview window (not fullscreen). Width/height may be
-  # adjusted here; the env vars `WLR_WAYLAND_OUTPUTS` and `WLR_X11_OUTPUTS`
-  # instruct wlroots to create an output of the given size for the nested
-  # compositor.
-  local PREVIEW_WIDTH=320 PREVIEW_HEIGHT=240
-  if [[ -n "${WAYLAND_DISPLAY:-}" && "${XDG_SESSION_TYPE:-}" == wayland ]]; then
-    sway_env=(env "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" "XDG_RUNTIME_DIR=$runtime" "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland WLR_BACKENDS=wayland WLR_WAYLAND_OUTPUTS="${PREVIEW_WIDTH}x${PREVIEW_HEIGHT}")
-  elif [[ -n "${DISPLAY:-}" ]]; then
-    sway_env=(env "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" "XDG_RUNTIME_DIR=$runtime" "DISPLAY=$DISPLAY" XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland WLR_BACKENDS=x11 WLR_X11_OUTPUTS="${PREVIEW_WIDTH}x${PREVIEW_HEIGHT}")
-  else
-    return 0
-  fi
-  _setup_log_write INFO "Opening a nested Sway preview window."
-  if (( EUID == 0 )); then
-    runuser -u "$TARGET_USER" -- "${sway_env[@]}" nohup setsid sway >>"$sway_log" 2>&1 </dev/null &
-  else
-    "${sway_env[@]}" nohup setsid sway >>"$sway_log" 2>&1 </dev/null &
-  fi
-}
-
 optional_command_installed() {
   local command_name="${1:-}"
   command -v "$command_name" >/dev/null 2>&1 || [[ -x "$TARGET_HOME/.local/bin/$command_name" ]]
+}
+
+# The user explicitly wants this exact command attempted at the end of every
+# installer invocation, including a run that completed with reported issues.
+# The guard lets the EXIT cleanup path serve as a backup without launching two
+# nested compositors during a normal run.
+launch_final_sway() {
+  (( SETUP_FINAL_SWAY_LAUNCHED == 0 )) || return 0
+  SETUP_FINAL_SWAY_LAUNCHED=1
+  WLR_BACKENDS=x11 sway &
 }
 
 # ---------- List install scripts (only install_*.sh) ----------
@@ -194,8 +176,9 @@ run_report() {
     run_users
   fi
 
-  # The only automatic Sway reload: after the completion banner and directly
-  # before the optional-tools prompt.  It does not start, stop, or nest Sway.
+  # Preserve the existing single automatic Sway reload, but complete it before
+  # the portal repair so the portal repair is the final required action before
+  # the optional-tools question.
   reload_target_sway || true
 
   # Optional tools menu
@@ -211,7 +194,9 @@ run_report() {
     info "Skipping"
   fi
 
-  info "Restart is not automatic. Log out and back in to apply group and user-service changes."
+  if (( SETUP_RELOGIN_REQUIRED )); then
+    info "Log out and back in to apply the group membership changed during this run."
+  fi
 
   main_sep
   if (( ${#SETUP_ISSUES[@]} > 0 )); then
@@ -225,6 +210,8 @@ run_report() {
       (( issue_count >= 12 )) && break
     done
     (( ${#SETUP_ISSUES[@]} > 12 )) && info "Additional issues are recorded in $SETUP_LOG_FILE"
+  elif (( ${#SETUP_DEFERRED[@]} > 0 )); then
+    info "Completed with ${#SETUP_DEFERRED[@]} deferred session action(s); see $SETUP_LOG_FILE"
   else
     ok "No installer issues detected"
   fi
@@ -233,6 +220,8 @@ run_report() {
   printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
   if (( ${#SETUP_ISSUES[@]} > 0 )); then
     warn "Installation completed with issues"
+  elif (( ${#SETUP_DEFERRED[@]} > 0 )); then
+    ok "Installation completed; session-dependent actions were deferred"
   else
     ok "Installation completed successfully!"
   fi
@@ -253,5 +242,7 @@ run_report() {
   [[ -d "${security_backup_dir:-}" ]] && echo "  Security   : $security_backup_dir"
   printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
 
-  start_sway_preview || true
+  # Always the last functional action, regardless of the final issue state.
+  launch_final_sway
+
 }
