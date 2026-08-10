@@ -20,7 +20,7 @@ start_sway_preview() {
   # adjusted here; the env vars `WLR_WAYLAND_OUTPUTS` and `WLR_X11_OUTPUTS`
   # instruct wlroots to create an output of the given size for the nested
   # compositor.
-  local PREVIEW_WIDTH=800 PREVIEW_HEIGHT=600
+  local PREVIEW_WIDTH=320 PREVIEW_HEIGHT=240
   if [[ -n "${WAYLAND_DISPLAY:-}" && "${XDG_SESSION_TYPE:-}" == wayland ]]; then
     sway_env=(env "HOME=$TARGET_HOME" "USER=$TARGET_USER" "LOGNAME=$TARGET_USER" "XDG_RUNTIME_DIR=$runtime" "WAYLAND_DISPLAY=$WAYLAND_DISPLAY" XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland WLR_BACKENDS=wayland WLR_WAYLAND_OUTPUTS="${PREVIEW_WIDTH}x${PREVIEW_HEIGHT}")
   elif [[ -n "${DISPLAY:-}" ]]; then
