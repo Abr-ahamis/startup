@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -29,4 +30,4 @@ ICON_CLIPBOARD=""
 # =========================
 # Output
 # =========================
-printf "<span color='%s'>| %s</span> \n" "$ICON_COLOR" "$ICON_CLIPBOARD"
+printf "<span color='%s'>| %s</span> \n" "$SECONDARY_TEXT" "$ICON_CLIPBOARD"

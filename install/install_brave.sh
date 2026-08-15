@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 log() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
@@ -23,10 +25,10 @@ case "$BRAVE_CHANNEL" in
 esac
 
 log "Updating system package lists"
-apt-get update
+optional_refresh >/dev/null 2>&1
 
 log "Installing prerequisites"
-apt-get install -y --no-install-recommends curl ca-certificates gnupg
+optional_install curl ca-certificates gnupg >/dev/null 2>&1
 
 # First try Brave's official installer script
 log "Trying Brave official installer script"
@@ -60,10 +62,10 @@ curl -fsSLo "/usr/share/keyrings/$(basename "$KEYRING_URL")" "$KEYRING_URL"
 curl -fsSLo "/etc/apt/sources.list.d/$(basename "$SOURCES_URL")" "$SOURCES_URL"
 
 log "Refreshing package lists after adding Brave repo"
-apt-get update
+optional_refresh >/dev/null 2>&1
 
 log "Installing Brave package: $PACKAGE"
-apt-get install -y "$PACKAGE"
+optional_install "$PACKAGE" >/dev/null 2>&1
 
 log "Verifying installation"
 if command -v brave-browser >/dev/null 2>&1; then

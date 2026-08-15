@@ -39,13 +39,24 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIPT_NAME="$(basename -- "${BASH_SOURCE[0]}")"
 
 # ---------- Target user ----------
-TARGET_USER="${SUDO_USER:-${USER:-root}}"
+if [[ -n "${STARTUP_TARGET_USER:-}" ]]; then
+  TARGET_USER="$STARTUP_TARGET_USER"
+elif [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
+  TARGET_USER="$SUDO_USER"
+elif (( EUID != 0 )) && [[ "${USER:-}" != root ]]; then
+  TARGET_USER="$USER"
+else
+  # A direct root invocation has no reliable shell identity.  Prefer the
+  # active local login reported by logind; never silently configure /root.
+  TARGET_USER="$(loginctl list-users --no-legend 2>/dev/null | awk '$2 != "root" {print $2; exit}')"
+  TARGET_USER="${TARGET_USER:-root}"
+fi
 TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6 || true)"
 TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || echo "$TARGET_USER")"
 TARGET_UID="$(id -u "$TARGET_USER" 2>/dev/null || echo 0)"
 
-if [[ -z "${TARGET_HOME:-}" ]]; then
-  TARGET_HOME="${HOME:-/root}"
+if [[ -z "${TARGET_HOME:-}" || "$TARGET_USER" == root ]]; then
+  TARGET_HOME=""
 fi
 
 # ---------- Timestamp + paths (private, per target user) ----------
@@ -124,8 +135,6 @@ stage() {
   SETUP_PROGRESS_ACTIVE_WEIGHT="$weight"
   SETUP_STAGE_CURRENT=$((SETUP_STAGE_CURRENT + 1))
   percent=$((SETUP_PROGRESS_COMPLETED_WEIGHT * 100 / SETUP_PROGRESS_TOTAL_WEIGHT))
-  printf '\n%s[%3d%% | %d/%d | elapsed %s]%s %s\n' \
-    "$SETUP_COLOR_CYAN" "$percent" "$SETUP_STAGE_CURRENT" "$SETUP_STAGE_TOTAL" "$(elapsed_time)" "$SETUP_COLOR_RST" "$name"
   _setup_log_write STAGE "$SETUP_STAGE_CURRENT/$SETUP_STAGE_TOTAL $name"
 }
 
@@ -135,8 +144,6 @@ finish_stage_progress() {
   SETUP_PROGRESS_ACTIVE_WEIGHT=0
   percent=$((SETUP_PROGRESS_COMPLETED_WEIGHT * 100 / SETUP_PROGRESS_TOTAL_WEIGHT))
   (( percent > 100 )) && percent=100
-  printf '%s[100%% | complete | elapsed %s]%s Required installation stages finished\n' \
-    "$SETUP_COLOR_CYAN" "$(elapsed_time)" "$SETUP_COLOR_RST"
   _setup_log_write PROGRESS "100% required installation stages finished (calculated=$percent%)"
 }
 
@@ -172,11 +179,9 @@ setup_cleanup() {
   fi
   rm -f -- "$SETUP_ACTIVE_PID_FILE" 2>/dev/null || true
   [[ -d "$SETUP_RUNTIME_DIR" ]] && rm -rf -- "$SETUP_RUNTIME_DIR" 2>/dev/null || true
-  # run_report normally launches the requested final Sway command. Keep this
-  # fallback for an unexpected exit after the report module was loaded.
-  if declare -F launch_final_sway >/dev/null 2>&1; then
-    launch_final_sway
-  fi
+  # Never launch a compositor from installer cleanup.  Cleanup must be
+  # side-effect free with respect to the user's existing desktop session;
+  # starting Sway here leaves a child process attached to the terminal.
   _setup_log_write INFO "Cleanup completed (exit $rc, elapsed $(elapsed_time))"
 }
 
@@ -473,11 +478,6 @@ prompt_yes_no() {
   local prompt="$1"
   local default="${2:-none}"
   local hint=""
-
-  if [[ "${SETUP_AUTO_YES:-0}" == "1" ]]; then
-    info "$prompt (auto-yes)"
-    return 0
-  fi
 
   if [[ ! -t 0 ]]; then
     warn "$prompt (no interactive terminal; using default)"

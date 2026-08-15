@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -58,16 +59,10 @@ fi
 # =========================
 # Color Logic
 # =========================
-color="$GREEN"
-
-if [ "$pct" -ge 80 ]; then
-  color="$RED"
-elif [ "$pct" -ge 50 ]; then
-  color="$WARN"
-fi
+color="$(percentage_color "$pct")"
 
 # =========================
 # Output
 # =========================
 printf "<span color='%s'>| </span><span color='%s'>%s</span> <span color='%s'>%s%%</span>\n" \
-  "$TEXT" "$color" "$ICON_CPU" "$TEXT" "$pct"
+  "$PRIMARY_TEXT" "$color" "$ICON_CPU" "$color" "$pct"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -37,9 +38,10 @@ max="$(brightnessctl max 2>/dev/null || printf 1)"
 [ "$max" -le 0 ] && max=1
 
 pct=$((100 * current / max))
+color="$(percentage_color "$pct")"
 
 # =========================
 # Output
 # =========================
 printf "|<span color='%s'> %s %s%%</span>\n" \
-  "$ICON_COLOR" "$ICON_BRIGHTNESS" "$pct"
+  "$color" "$ICON_BRIGHTNESS" "$pct"

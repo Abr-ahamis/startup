@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -uo pipefail
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -85,4 +86,4 @@ color="$TEXT"
 # Output
 # =========================
 printf "<span color='%s'>| </span><span color='%s'>%s</span> <span color='%s'>%s</span>\n" \
-  "$TEXT" "$ICON_COLOR" "$ICON" "$TEXT" "$count"
+  "$PRIMARY_TEXT" "$ATTENTION" "$ICON" "$PRIMARY_TEXT" "$count"

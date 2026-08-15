@@ -42,7 +42,7 @@ deb="$(find "$tmpdir" -maxdepth 1 -type f -name 'rustscan_*_amd64.deb' -print -q
   exit 1
 }
 
-if ! as_root apt-get install -y "$deb"; then
+if ! optional_install "$deb"; then
   echo 'RustScan installation failed.' >&2
   exit 1
 fi

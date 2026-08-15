@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 log() { printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
@@ -15,11 +17,11 @@ command -v apt-get >/dev/null 2>&1 || die "This script only supports Debian/Ubun
 
 export DEBIAN_FRONTEND=noninteractive
 
-apt-get update
-apt-get install -y --no-install-recommends curl ca-certificates gnupg unzip jq tar
+optional_refresh >/dev/null 2>&1
+optional_install curl ca-certificates gnupg unzip jq tar >/dev/null 2>&1
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf -- "$tmpdir"' EXIT
+OPTIONAL_TMPDIR="$tmpdir"
 
 # -------------------------
 # Brave
@@ -62,8 +64,8 @@ else
         curl -fsSLo "/usr/share/keyrings/$(basename "$KEYRING_URL")" "$KEYRING_URL"
         curl -fsSLo "/etc/apt/sources.list.d/$(basename "$SOURCES_URL")" "$SOURCES_URL"
 
-        apt-get update
-        apt-get install -y "$PACKAGE"
+        optional_refresh
+        optional_install "$PACKAGE"
     fi
 fi
 
@@ -88,7 +90,7 @@ else
     curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 -o "$deb" "$url"
     [[ -s "$deb" ]] || die "VS Code download failed."
 
-    apt-get install -y "$deb"
+    optional_install "$deb"
 
     command -v code >/dev/null 2>&1 || die "VS Code installation completed, but 'code' was not found."
 fi
@@ -133,7 +135,7 @@ else
     curl -fL --retry 3 --retry-delay 2 --connect-timeout 15 -o "$rust_deb" "$rust_url"
     [[ -s "$rust_deb" ]] || die "RustScan download failed."
 
-    apt-get install -y "$rust_deb"
+    optional_install "$rust_deb"
 
     command -v rustscan >/dev/null 2>&1 || die "RustScan installation completed, but rustscan was not found."
 fi

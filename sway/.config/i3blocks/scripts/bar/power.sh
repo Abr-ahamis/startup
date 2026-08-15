@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -23,4 +24,4 @@ ICON_POWER=" ⏻ "
 # =========================
 # Output
 # =========================
-printf "<span color='%s'>%s</span>\n" "$BLUE" "$ICON_POWER"
+printf "<span color='%s'>%s</span>\n" "$CRITICAL" "$ICON_POWER"

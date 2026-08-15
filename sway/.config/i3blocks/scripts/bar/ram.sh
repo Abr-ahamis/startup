@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -33,13 +34,10 @@ pct="$(awk -v used="$used_kb" -v total="$total_kb" 'BEGIN {printf "%.0f", (used/
 # =========================
 # Color logic
 # =========================
-color="$GREEN"
-
-awk -v p="$pct" 'BEGIN {exit !(p >= 80)}' && color="$RED"
-awk -v p="$pct" 'BEGIN {exit !(p >= 50 && p < 80)}' && color="$YELLOW"
+color="$(percentage_color "$pct")"
 
 # =========================
 # Output
 # =========================
 printf "<span color='%s'> |</span> <span color='%s'>%s</span> <span color='%s'>%s%%</span> <span color='%s'>[%sG]</span>\n" \
-  "$WHITE" "$color" "$ICON" "$WHITE" "$pct" "$WHITE" "$used_gb"
+  "$PRIMARY_TEXT" "$color" "$ICON" "$color" "$pct" "$PRIMARY_TEXT" "$used_gb"

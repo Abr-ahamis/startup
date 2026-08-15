@@ -28,7 +28,7 @@ as_root mkdir -p /opt
 as_root cp -a "$tmpdir/Telegram" /opt/
 as_root ln -sfn /opt/Telegram /usr/local/bin/telegram-desktop
 
-run_as_target mkdir -p "$HOME/.local/bin" 2>/dev/null || true
+run_as_target mkdir -p "$target_home/.local/bin" 2>/dev/null || true
 register_gnome_keybinding "startup-telegram" "<Super>t" "Telegram" "/usr/local/bin/telegram-desktop" >/dev/null 2>&1 || true
 
 echo 'Starting Telegram Desktop...'

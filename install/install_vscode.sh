@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
+
 log() {
     printf '\n[%s] %s\n' "$(date +%H:%M:%S)" "$*"
 }
@@ -25,10 +27,10 @@ command -v apt-get >/dev/null 2>&1 || \
 export DEBIAN_FRONTEND=noninteractive
 
 log "Updating package lists..."
-apt-get update
+optional_refresh >/dev/null 2>&1
 
 log "Installing required packages..."
-apt-get install -y --no-install-recommends curl ca-certificates
+optional_install curl ca-certificates >/dev/null 2>&1
 
 arch="$(dpkg --print-architecture)"
 
@@ -47,7 +49,7 @@ esac
 url="https://code.visualstudio.com/sha/download?build=stable&os=linux-deb-${vscode_arch}"
 
 tmpdir="$(mktemp -d)"
-trap 'rm -rf "$tmpdir"' EXIT
+OPTIONAL_TMPDIR="$tmpdir"
 
 deb="$tmpdir/code.deb"
 
@@ -60,12 +62,12 @@ curl \
     --retry-delay 2 \
     --connect-timeout 15 \
     --output "$deb" \
-    "$url"
+    "$url" >/dev/null 2>&1
 
 [[ -s "$deb" ]] || die "VS Code download failed."
 
 log "Installing VS Code..."
-apt-get install -y "$deb"
+optional_install "$deb" >/dev/null 2>&1
 
 log "Verifying installation..."
 

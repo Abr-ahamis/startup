@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -53,11 +54,11 @@ vol="$(printf "%s\n" "$line" | awk '{for (i=1;i<=NF;i++) if ($i ~ /^[0-9.]+$/) {
 [ -z "$vol" ] && vol=0
 
 icon="$ICON_VOLUME_LOW"
-color="$TEXT"
+color="$(percentage_color "$vol")"
 
 if printf "%s" "$line" | grep -qi MUTED; then
   icon="$ICON_VOLUME_MUTED"
-  color="$ICON_COLOR"
+  color="$SECONDARY_TEXT"
 
 elif [ "$vol" -ge 70 ]; then
   icon="$ICON_VOLUME_HIGH"
@@ -72,4 +73,4 @@ fi
 # =========================
 # Output
 # =========================
-printf "<span color='%s'>| %s </span><span color='%s'>%s%%</span>\n" "$color" "$icon" "$TEXT" "$vol"
+printf "<span color='%s'>| %s </span><span color='%s'>%s%%</span>\n" "$color" "$icon" "$color" "$vol"

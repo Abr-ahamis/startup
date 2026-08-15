@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -44,7 +45,7 @@ iface="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="d
 
 if [ -z "${iface}" ] || [ ! -r "/sys/class/net/${iface}/statistics/tx_bytes" ]; then
   printf "<span color='%s'>%s</span> <span color='%s'>0B</span>  <span color='%s'>%s</span> <span color='%s'>0B</span>\n" \
-    "$ICON_COLOR" "$ICON_UP" "$TEXT" "$ICON_COLOR" "$ICON_DOWN" "$TEXT"
+    '#5E5CE6' "$ICON_UP" "$PRIMARY_TEXT" "$ACCENT" "$ICON_DOWN" "$PRIMARY_TEXT"
   exit 0
 fi
 
@@ -78,5 +79,5 @@ rx_rate=$(((rx - prev_rx) / delta))
 # Output
 # =========================
 printf "<span color='%s'>%s</span> <span color='%s'>%s</span> <span color='%s'>| %s</span> <span color='%s'>%s</span>\n" \
-  "$ICON_COLOR" "$ICON_UP" "$TEXT" "$(fmt_rate "$tx_rate")" \
-  "$ICON_COLOR" "$ICON_DOWN" "$TEXT" "$(fmt_rate "$rx_rate")"
+  '#5E5CE6' "$ICON_UP" "$PRIMARY_TEXT" "$(fmt_rate "$tx_rate")" \
+  "$ACCENT" "$ICON_DOWN" "$PRIMARY_TEXT" "$(fmt_rate "$rx_rate")"

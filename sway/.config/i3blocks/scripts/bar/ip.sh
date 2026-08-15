@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -66,15 +67,15 @@ local_ip="$(
 # Output
 # =========================
 if [ -z "${public_ip:-}" ]; then
-  public_part="<span color='$ICON_COLOR'>$ICON_NO_IP </span><span color='$TEXT'>no public ip</span>"
+  public_part="<span color='$WARNING'>$ICON_NO_IP </span><span color='$SECONDARY_TEXT'>no public ip</span>"
 else
-  public_part="<span color='$ICON_COLOR'>$ICON_GLOBE </span><span color='$TEXT'>$public_ip</span>"
+  public_part="<span color='$NETWORK'>$ICON_GLOBE </span><span color='$PRIMARY_TEXT'>$public_ip</span>"
 fi
 
 if [ -z "${local_ip:-}" ]; then
-  local_part="<span color='$ICON_COLOR'>$ICON_NO_IP </span><span color='$TEXT'>no local ip</span>"
+  local_part="<span color='$WARNING'>$ICON_NO_IP </span><span color='$SECONDARY_TEXT'>no local ip</span>"
 else
-  local_part="<span color='$ICON_COLOR'>$ICON_LOCAL </span><span color='$TEXT'>$local_ip</span>"
+  local_part="<span color='$NETWORK'>$ICON_LOCAL </span><span color='$PRIMARY_TEXT'>$local_ip</span>"
 fi
 
 printf " | %s | %s\n" "$public_part" "$local_part"

@@ -23,7 +23,7 @@ package_for() {
     debian:audio) echo pipewire pipewire-pulse wireplumber;; arch:audio) echo pipewire pipewire-pulse wireplumber;;
     debian:clipboard|arch:clipboard) echo cliphist;;
     debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman sudo zsh grub2-common;;
+    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman sudo zsh grub2-common dbus dbus-user-session;;
     arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman zsh;;
     *) return 1;;
   esac
@@ -34,15 +34,8 @@ package_available() { case "$PKG_MANAGER" in apt) apt-cache show "$1" >/dev/null
 
 repair_apt() {
   info "Repairing APT/dpkg state."
-  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get clean >>"$SETUP_LOG_FILE" 2>&1 || true
-  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoclean >>"$SETUP_LOG_FILE" 2>&1 || true
-  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
-  run_as_root dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
-  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get update --fix-missing >>"$SETUP_LOG_FILE" 2>&1 || true
-  run_as_root env DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >>"$SETUP_LOG_FILE" 2>&1 || true
-  if [[ -n "${SETUP_APT_REPAIR_REPO_URL:-}" ]]; then
-    run_as_root bash -lc 'printf "%s\n" "$1" > /etc/apt/sources.list.d/startup-repair.list' sh "$SETUP_APT_REPAIR_REPO_URL" >>"$SETUP_LOG_FILE" 2>&1 || true
-  fi
+  run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 10m apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
+  run_as_root timeout --foreground 5m dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
 }
 
 install_package() {
@@ -50,18 +43,10 @@ install_package() {
   _setup_log_write INFO "Installing package: $package (manager=$PKG_MANAGER)"
   case "$PKG_MANAGER" in
     apt)
-      if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
-        run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --reinstall --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
-      else
-        run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
-      fi
+      run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
       ;;
     pacman)
-      if [[ "${SETUP_REINSTALL:-0}" == 1 ]]; then
-        run_as_root timeout --foreground 20m pacman -S --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 &
-      else
-        run_as_root timeout --foreground 20m pacman -S --needed --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 &
-      fi
+      run_as_root timeout --foreground 20m pacman -S --needed --noconfirm "$package" >>"$SETUP_LOG_FILE" 2>&1 &
       ;;
   esac
   pid=$!
@@ -160,7 +145,7 @@ check_package_disk_space() {
 run_packages() {
   local backup_ready=0
   cleanup_previous_package_process
-  section_setup "Pre-install backup"
+  _setup_log_write SECTION "Pre-install backup"
   if ! run_as_root install -d -m 700 "$SETUP_BACKUP_DIR"; then
     warn "Cannot create installer backup directory: $SETUP_BACKUP_DIR. Package installation will continue safely."
   else
@@ -170,9 +155,6 @@ run_packages() {
     _setup_log_write INFO "Backup directory ready: $SETUP_BACKUP_DIR"
     backup_ready=1
     backup_package_selections
-  fi
-  if (( ${#SETUP_REMOVE_PACKAGES[@]} )); then
-    remove_packages "${SETUP_REMOVE_PACKAGES[@]}" || warn "One or more requested removals failed"
   fi
   section_setup "Installing REQUIRED packages"
   # Refresh package metadata only (never upgrade installed packages), and
@@ -188,7 +170,7 @@ run_packages() {
   local total="${#REQUIRED_PACKAGES[@]}" index=0 pkg
   for pkg in "${REQUIRED_PACKAGES[@]}"; do
     index=$((index + 1))
-    if package_installed "$pkg" && [[ "${SETUP_REINSTALL:-0}" != 1 ]]; then
+    if package_installed "$pkg"; then
       ok "$pkg installed"
     else
       MISSING_PACKAGES+=("$pkg")

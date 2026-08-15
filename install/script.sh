@@ -2,6 +2,12 @@
 # Standalone optional-installer selector.
 set -uo pipefail
 
+installer_interrupted() {
+  printf '\n[%s] Installation interrupted. No further changes were made.\n' "$(date +%H:%M:%S)" >&2
+  exit 130
+}
+trap installer_interrupted INT TERM HUP
+
 INSTALL_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 scan_installers() {
@@ -16,10 +22,14 @@ run_script() {
   local file="$1"
   printf '\n==============================\nRunning: %s\n==============================\n' "$(basename "$file")"
   chmod +x "$file" 2>/dev/null || true
-  if bash "$file"; then
+  local log_file="${STARTUP_LOG_FILE:-/var/log/startup-install.log}"
+  if ! touch "$log_file" 2>/dev/null; then log_file="${TMPDIR:-/tmp}/startup-install.log"; touch "$log_file"; fi
+  if STARTUP_LOG_FILE="$log_file" bash "$file" >>"$log_file" 2>&1; then
     echo "Finished: $(basename "$file")"
   else
-    echo "Failed: $(basename "$file") — continuing with remaining scripts." >&2
+    local rc=$?
+    (( rc == 130 || rc == 143 || rc == 129 )) && exit "$rc"
+    echo "Failed: $(basename "$file") — see $log_file; continuing with remaining scripts." >&2
   fi
 }
 

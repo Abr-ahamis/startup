@@ -28,12 +28,8 @@ register_gnome_keybinding() {
     return 0
   fi
 
-  local runtime="${XDG_RUNTIME_DIR:-/run/user/$TARGET_UID}"
-  local bus="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$runtime/bus}"
-  local -a session_env=(env "XDG_RUNTIME_DIR=$runtime" "DBUS_SESSION_BUS_ADDRESS=$bus" \
-    "DISPLAY=${DISPLAY:-}" "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}")
-
-  run_as_target "${session_env[@]}" python3 - "$key_path" <<'PY'
+  target_session_available || { info "GNOME session unavailable; keybinding '$binding_name' deferred."; return 0; }
+  run_as_target_session python3 - "$key_path" <<'PY'
 import subprocess
 import sys
 path = sys.argv[1]
@@ -101,17 +97,23 @@ register_common_gnome_keybindings() {
 
 run_gnome_desktop_setup() {
   local desktop=" ${XDG_CURRENT_DESKTOP:-} ${DESKTOP_SESSION:-} ${GDMSESSION:-} "
+  if target_session_available; then
+    desktop=" $desktop $(run_as_target_session systemctl --user show-environment 2>/dev/null | awk -F= '$1 ~ /^(XDG_CURRENT_DESKTOP|DESKTOP_SESSION|GDMSESSION)$/ {print $2}' | tr '\n' ' ') "
+  fi
   [[ "$desktop" == *GNOME* || "$desktop" == *gnome* ]] || return 0
   command -v gsettings >/dev/null 2>&1 || { warn "GNOME detected but gsettings is unavailable."; return 1; }
-  local runtime="${XDG_RUNTIME_DIR:-/run/user/$TARGET_UID}"
-  local bus="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$runtime/bus}"
-  local -a env_args=(env "XDG_RUNTIME_DIR=$runtime" "DBUS_SESSION_BUS_ADDRESS=$bus" "DISPLAY=${DISPLAY:-}" "WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}")
-  run_as_target "${env_args[@]}" gsettings set org.gnome.desktop.wm.preferences button-layout ':minimize,maximize,close' || return 1
+  local -a env_args=()
+  if target_session_available; then
+    run_as_target_session gsettings set org.gnome.desktop.wm.preferences button-layout ':minimize,maximize,close' || return 1
+  else
+    info "GNOME user session unavailable; GNOME settings deferred until login."
+    return 0
+  fi
   # Keep GNOME's close shortcut identical to Sway: Super+Shift+Q.
-  run_as_target "${env_args[@]}" gsettings set org.gnome.desktop.wm.keybindings close "['<Super><Shift>q']" || return 1
-  run_as_target "${env_args[@]}" gsettings set org.gnome.desktop.wm.keybindings panel-main-menu "['<Super>d']" || true
-  run_as_target "${env_args[@]}" gsettings set org.gnome.desktop.wm.keybindings toggle-fullscreen "['<Super>f']" || true
-  run_as_target "${env_args[@]}" gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver "['<Primary><Alt>l']" || true
+  run_as_target_session gsettings set org.gnome.desktop.wm.keybindings close "['<Super><Shift>q']" || return 1
+  run_as_target_session gsettings set org.gnome.desktop.wm.keybindings panel-main-menu "['<Super>d']" || true
+  run_as_target_session gsettings set org.gnome.desktop.wm.keybindings toggle-fullscreen "['<Super>f']" || true
+  run_as_target_session gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver "['<Primary><Alt>l']" || true
   register_gnome_keybinding startup-terminal '<Super>Return' 'Terminal' "$TARGET_HOME/.local/bin/launch-app.sh terminal" || true
   register_gnome_keybinding startup-terminal-secondary '<Super><Shift>Return' 'Secondary terminal' "$TARGET_HOME/.local/bin/launch-app.sh terminal-secondary" || true
   register_gnome_keybinding startup-files '<Super><Shift>e' 'File manager' "$TARGET_HOME/.local/bin/launch-app.sh filemanager" || true
@@ -124,8 +126,8 @@ run_gnome_desktop_setup() {
   register_gnome_keybinding startup-obsidian '<Super><Shift>o' 'Obsidian' "$TARGET_HOME/.local/bin/launch-app.sh obsidian" || true
   register_gnome_keybinding startup-key-help '<Shift>F1' 'Sway key help' "$TARGET_HOME/.config/sway/scripts/key-help-wofi.sh" || true
   register_gnome_keybinding startup-wifi XF86RFKill 'Toggle Wi-Fi' 'nmcli radio wifi toggle' || true
-  run_as_target "${env_args[@]}" gsettings set org.gnome.settings-daemon.plugins.media-keys volume-mute "['XF86AudioMute']" || true
-  run_as_target "${env_args[@]}" gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false || true
-  run_as_target "${env_args[@]}" gsettings set org.gnome.desktop.interface text-scaling-factor 0.7 || true
+  run_as_target_session gsettings set org.gnome.settings-daemon.plugins.media-keys volume-mute "['XF86AudioMute']" || true
+  run_as_target_session gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false || true
+  run_as_target_session gsettings set org.gnome.desktop.interface text-scaling-factor 0.7 || true
   ok "GNOME desktop settings and keybindings configured"
 }

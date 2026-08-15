@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -31,16 +32,16 @@ ICON_DOT="●"
 radio="$(nmcli radio wifi 2>/dev/null || printf disabled)"
 
 if [ "$radio" != "enabled" ]; then
-  dot_color="$TEXT"
+  dot_color="$CRITICAL"
   label="off"
 else
   ssid="$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes" {print $2; exit}')"
 
   if [ -n "$ssid" ]; then
-    dot_color="$TEXT"
+    dot_color="$HEALTHY"
     label="${ssid:0:6}"
   else
-    dot_color="$TEXT"
+    dot_color="$CRITICAL"
     label="---"
   fi
 fi
@@ -49,4 +50,4 @@ fi
 # Output
 # =========================
 printf "| <span color='%s'>%s </span><span color='%s'>%s</span> \n" \
-  "$ICON_COLOR" "$ICON_DOT" "$TEXT" "$label"
+  "$NETWORK" "$ICON_DOT" "$dot_color" "$label"

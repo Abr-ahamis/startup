@@ -6,28 +6,9 @@ source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 optional_detect || exit 1
 optional_install curl jq
 
-# Resolve target user information
-TARGET_USER="${TARGET_USER:-${target_user:-${SUDO_USER:-${USER:-root}}}}"
-TARGET_HOME="${TARGET_HOME:-${target_home:-$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6 || true)}}"
-TARGET_GROUP="${TARGET_GROUP:-${target_group:-$(id -gn "$TARGET_USER" 2>/dev/null || true)}}"
-
-if [[ -z "$TARGET_USER" ]]; then
-    echo "Error: TARGET_USER is not set." >&2
-    exit 1
-fi
-
-if [[ -z "$TARGET_HOME" ]]; then
-    TARGET_HOME="$(getent passwd "$TARGET_USER" 2>/dev/null | cut -d: -f6 || true)"
-fi
-
-if [[ -z "$TARGET_GROUP" ]]; then
-    TARGET_GROUP="$(id -gn "$TARGET_USER" 2>/dev/null || true)"
-fi
-
-[[ -d "$TARGET_HOME" ]] || {
-    echo "Error: Home directory not found: $TARGET_HOME" >&2
-    exit 1
-}
+TARGET_USER="$target_user"
+TARGET_HOME="$target_home"
+TARGET_GROUP="$(id -gn "$TARGET_USER")"
 
 # Detect architecture
 case "$(uname -m)" in

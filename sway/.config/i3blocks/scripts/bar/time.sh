@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -23,4 +24,4 @@ ICON_TIME=""
 # Logic + Output
 # =========================
 printf "<span color='%s'>|</span> <span color='%s'>%s</span> %s\n" \
-  "$TEXT" "$ICON_COLOR" "$ICON_TIME" "$(date '+%I:%M')"
+  "$PRIMARY_TEXT" "$PRIMARY_TEXT" "$ICON_TIME" "$(date '+%I:%M')"

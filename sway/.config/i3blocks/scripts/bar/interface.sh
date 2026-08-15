@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -35,11 +36,13 @@ get_ip_for_iface() {
 
 iface=""
 icon="$ICON_UNKNOWN"
+icon_color="$DISABLED"
 
 for i in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^(tun|tap|wg|vpn|tailscale|zt|ppp)[0-9a-zA-Z_-]*$' | sort -u); do
   if [ -n "$(get_ip_for_iface "$i")" ]; then
     iface="$i"
     icon="$ICON_VPN"
+    icon_color='#5E5CE6'
     break
   fi
 done
@@ -49,6 +52,7 @@ if [ -z "$iface" ]; then
     if [ -n "$(get_ip_for_iface "$i")" ]; then
       iface="$i"
       icon="$ICON_ETH"
+      icon_color="$ACCENT"
       break
     fi
   done
@@ -59,6 +63,7 @@ if [ -z "$iface" ]; then
     if [ -n "$(get_ip_for_iface "$i")" ]; then
       iface="$i"
       icon="$ICON_WIFI"
+      icon_color="$NETWORK"
       break
     fi
   done
@@ -70,4 +75,4 @@ fi
 # Output
 # =========================
 printf "| <span color='%s'>%s </span> <span color='%s'>%s</span> \n" \
-  "$ICON_COLOR" "$icon" "$TEXT" "$iface"
+  "$icon_color" "$icon" "$PRIMARY_TEXT" "$iface"

@@ -19,7 +19,7 @@ reload_target_sway() {
     fi
     return 1
   fi
-  if run_as_target env XDG_RUNTIME_DIR="$runtime" SWAYSOCK="$socket" swaymsg reload >>"$SETUP_LOG_FILE" 2>&1 && run_as_target env XDG_RUNTIME_DIR="$runtime" SWAYSOCK="$socket" swaymsg -t get_version >>"$SETUP_LOG_FILE" 2>&1; then
+  if run_as_target env XDG_RUNTIME_DIR="$runtime" SWAYSOCK="$socket" timeout --foreground 8s swaymsg reload >>"$SETUP_LOG_FILE" 2>&1 && run_as_target env XDG_RUNTIME_DIR="$runtime" SWAYSOCK="$socket" timeout --foreground 8s swaymsg -t get_version >>"$SETUP_LOG_FILE" 2>&1; then
     _setup_log_write INFO "Sway reload confirmed."
     return 0
   fi
@@ -42,11 +42,11 @@ run_services() {
     # Preserve the active desktop identity. Forcing `sway` in a GNOME
     # session makes xdg-desktop-portal try the wlr backend, which then waits
     # for a compositor that is not running.
-    run_as_target_session dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP >>"$SETUP_LOG_FILE" 2>&1 || warn "Could not export the portal environment."
+    run_as_target_session timeout --foreground 10s dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP >>"$SETUP_LOG_FILE" 2>&1 || warn "Could not export the portal environment."
     # daemon-reload is sufficient after installing user units; daemon-reexec is
     # disruptive and adds startup latency without making those units visible.
-    run_as_target_session systemctl --user daemon-reload >>"$SETUP_LOG_FILE" 2>&1 || warn "Could not reload user units."
-    run_as_target_session systemctl --user enable --now pipewire pipewire-pulse wireplumber battery-monitor.service >>"$SETUP_LOG_FILE" 2>&1 || warn "Some user services could not be started."
+    run_as_target_session timeout --foreground 15s systemctl --user daemon-reload >>"$SETUP_LOG_FILE" 2>&1 || warn "Could not reload user units."
+    run_as_target_session timeout --foreground 20s systemctl --user enable --now pipewire pipewire-pulse wireplumber battery-monitor.service >>"$SETUP_LOG_FILE" 2>&1 || warn "Some user services could not be started."
   else
     defer "No active D-Bus session for $TARGET_USER; user services and portal repair were not run."
   fi
@@ -54,7 +54,7 @@ run_services() {
   if [[ -x "$TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh" ]]; then
     if $can_manage_user_session; then
       info "Repairing the portal configuration for the active target session."
-      if run_as_target_session bash "$TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh" setup >>"$SETUP_LOG_FILE" 2>&1; then
+      if run_as_target_session timeout --foreground 30s bash "$TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh" setup >>"$SETUP_LOG_FILE" 2>&1; then
         ok "Portal configuration verified for the active session"
       else
         warn "Portal configuration could not be completed; see $SETUP_LOG_FILE"
@@ -66,4 +66,5 @@ run_services() {
     warn "Portal helper is missing or not executable: $TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh"
   fi
   run_gnome_desktop_setup || warn "GNOME desktop settings could not be configured; see $SETUP_LOG_FILE"
+  setup_double_sep
 }

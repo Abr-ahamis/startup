@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -u
+source "$(dirname "$0")/colors.sh"
 
 # =========================
 # Config
@@ -35,13 +36,13 @@ ICON_DOT="●"
 powered="$(timeout 2 bluetoothctl show 2>/dev/null | awk -F': ' '/Powered:/ {print $2; exit}')"
 
 if [ "$powered" != "yes" ]; then
-  dot_color="$TEXT"
+  dot_color="$DISABLED"
 else
   mac="$(timeout 2 bluetoothctl devices Connected 2>/dev/null | awk 'NR==1 {print $2}')"
   if [ -n "$mac" ]; then
-    dot_color="$TEXT"
+    dot_color="$ACCENT"
   else
-    dot_color="$TEXT"
+    dot_color="$DISABLED"
   fi
 fi
 
@@ -49,4 +50,4 @@ fi
 # Output
 # =========================
 printf "|<span color='%s'> %s </span><span color='%s'>%s</span> \n" \
-  "$TEXT" "$ICON_DOT" "$BLUETOOTH_COLOR" "$ICON_BLUETOOTH"
+  "$dot_color" "$ICON_DOT" "$ACCENT" "$ICON_BLUETOOTH"
