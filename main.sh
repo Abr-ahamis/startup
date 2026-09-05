@@ -35,17 +35,11 @@ if [[ -z "${TARGET_HOME:-}" || "${TARGET_USER:-root}" == root ]]; then
   exit 1
 fi
 
-# Mirror the complete interactive run (stdout and stderr) to a separate
-# transcript while retaining the structured setup log used by modules.
-start_transcript_logging || true
-
 run_distro
 run_packages
-run_pipx
-run_grub
 run_config_files
 run_wallpapers
-main_sep
 run_security
 run_services
+run_grub
 run_report

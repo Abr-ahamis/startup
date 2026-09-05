@@ -25,25 +25,7 @@ CACHE_FILE="$state_dir/i3updates_count_${UID:-$(id -u)}"
 # =========================
 case "${BLOCK_BUTTON:-}" in
   1)
-    foot -e bash -c '
-      set -e
-
-      echo "=============================="
-      echo " SYSTEM UPDATE"
-      echo "=============================="
-      echo ""
-
-      sudo -v
-
-      echo "[*] Updating package list..."
-      if command -v pacman >/dev/null 2>&1; then sudo pacman -Sy --noconfirm; else sudo apt-get update; fi
-
-      echo ""
-      echo ""
-      echo "[+] Package metadata refreshed; no packages were upgraded."
-      echo "=============================="
-      read -rp "Press Enter to close..."
-    ' >/dev/null 2>&1 &
+    foot -e sh -c 'echo "Package checks are read-only in this setup."; echo "Use your distribution update workflow when you choose."; read -r _' >/dev/null 2>&1 &
     ;;
 esac
 

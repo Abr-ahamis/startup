@@ -8,14 +8,17 @@ set $alt Mod1
 set $bar-hight 16
 set $bar-font-size 7
 
-set $term ~/.local/bin/launch-app.sh terminal
-set $term2 ~/.local/bin/launch-app.sh terminal-secondary
+set $launcher ~/.config/sway/scripts/launch-app.sh
+set $term $launcher terminal
+set $term2 $launcher terminal-secondary
 set $menu wofi --show drun
-set $filemanager ~/.local/bin/launch-app.sh filemanager
-set $browser ~/.local/bin/launch-app.sh browser
-set $browser2 ~/.local/bin/launch-app.sh browser-secondary
-set $editor ~/.local/bin/launch-app.sh editor
-set $screenshot ~/.local/bin/launch-app.sh screenshot
+set $filemanager $launcher filemanager
+set $browser $launcher browser
+set $browser2 $launcher browser-secondary
+set $editor $launcher editor
+set $screenshot $launcher screenshot
+set $close_all ~/.config/sway/scripts/close-all-windows.sh
+set $night_light ~/.config/sway/scripts/toggle-night-light.sh
 
 # ---------------------------
 # Workspaces
@@ -64,25 +67,29 @@ for_window [app_id="wofi"] border pixel 1
 for_window [app_id="wofi"] sticky enable
 
 # ---------------------------
-# Keybindings
+# Keybindings — edit bindings within the labelled sections below.
 # ---------------------------
 
+# Applications and launchers
 bindsym $mod+Return exec $term
-bindsym $mod+Shift+Return exec $term2
-bindsym $mod exec $menu
+bindsym $mod+Alt+Return exec $term2
+bindsym $mod+space exec $menu
+bindsym $mod+Alt+space exec $menu
 bindsym $mod+d exec $menu
 bindsym Shift+F1 exec ~/.config/sway/scripts/key-help-wofi.sh
+bindsym $mod+k exec ~/.config/sway/scripts/key-help-wofi.sh
 
-bindsym $mod+Shift+e exec $filemanager
-bindsym $mod+Shift+f exec $browser
-bindsym $mod+Shift+b exec $browser2
-bindsym $mod+Shift+t exec ~/.local/bin/launch-app.sh telegram
+bindsym $mod+Escape exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
+bindsym $mod+Shift+Return exec $browser
+bindsym $mod+Shift+f exec $filemanager
+bindsym $mod+Shift+Alt+b exec $browser2
+bindsym $mod+Shift+t exec $launcher telegram
 bindsym $mod+Shift+n exec $editor
-bindsym $mod+Shift+s exec $screenshot
-bindsym $mod+Shift+c exec ~/.local/bin/launch-app.sh code
-bindsym $mod+Shift+o exec ~/.local/bin/launch-app.sh obsidian
+bindsym Print exec $screenshot
+bindsym $mod+Shift+c exec $launcher code
+bindsym $mod+Shift+o exec $launcher obsidian
 
-
+# Existing utility menus
 bindsym Ctrl+Alt+r reload
 bindsym Ctrl+Alt+e exit
 bindsym Ctrl+Alt+l exec swaylock -f -c 2f343f
@@ -92,24 +99,43 @@ bindsym Ctrl+Alt+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_me
 bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_menu.sh; exec bash"
 bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 
+# System controls
+bindsym $mod+Ctrl+l exec swaylock -f -c 2f343f
+bindsym $mod+Ctrl+a exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
+bindsym $mod+Ctrl+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
+bindsym $mod+Ctrl+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
+bindsym $mod+Ctrl+p exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
+bindsym $mod+Ctrl+t exec foot btop
+bindsym $mod+Ctrl+c exec $screenshot
+bindsym $mod+Ctrl+Delete exec swaymsg 'output * dpms off'
+bindsym $mod+Ctrl+n exec $night_light
+bindsym Ctrl+Alt+Delete exec $close_all
+
+# Notifications and clipboard
+bindsym $mod+comma exec dunstctl close
+bindsym $mod+Shift+comma exec dunstctl close-all
+bindsym $mod+Ctrl+comma exec dunstctl set-paused toggle
+bindsym $mod+Ctrl+v exec sh -c 'cliphist list | wofi --dmenu --insensitive --prompt clipboard | cliphist decode | wl-copy'
+
 bindsym Ctrl+Shift+Mod4+q exec systemctl poweroff
 bindsym Ctrl+Shift+Mod4+a exec systemctl reboot
 bindsym Ctrl+Shift+Mod4+s exec systemctl suspend
 
-bindsym $mod+Shift+q kill
+# Window and layout controls
+bindsym $mod+w kill
 bindsym $mod+f fullscreen toggle
-bindsym $mod+Shift+space floating toggle
-bindsym $mod+space focus mode_toggle
+bindsym $mod+t floating toggle
+bindsym $mod+o floating toggle, sticky toggle
 bindsym $mod+a focus parent
 
+# Focus and moving
 bindsym $mod+Left  focus left
 bindsym $mod+Down  focus down
 bindsym $mod+Up    focus up
 bindsym $mod+Right focus right
 
 bindsym $mod+h focus left
-bindsym $mod+j focus down
-bindsym $mod+k focus up
+bindsym $mod+j layout toggle split
 bindsym $mod+l focus right
 
 bindsym $mod+Shift+Left  move left
@@ -122,19 +148,27 @@ bindsym $mod+Shift+j move down
 bindsym $mod+Shift+k move up
 bindsym $mod+Shift+l move right
 
-bindsym $mod+s layout stacking
-bindsym $mod+w layout tabbed
+# Super+K opens help. Arrow keys and Super+H/L provide directional focus;
+# Super+J and Super+E are native Sway split-layout controls.
+bindsym $mod+s scratchpad show
 bindsym $mod+e layout toggle split
 
+# Audio and brightness
 bindsym XF86AudioLowerVolume exec pamixer -d 5
 bindsym XF86AudioRaiseVolume exec pamixer -i 5
 bindsym XF86AudioMute exec pamixer -t
+bindsym Alt+XF86AudioLowerVolume exec pamixer -d 1
+bindsym Alt+XF86AudioRaiseVolume exec pamixer -i 1
 bindsym XF86MonBrightnessDown exec ~/.local/bin/brightness-control.sh set '2%-'
 bindsym XF86MonBrightnessUp exec ~/.local/bin/brightness-control.sh set '2%+'
+bindsym Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness-control.sh set 1%
+bindsym Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness-control.sh set 100%
+bindsym Alt+XF86MonBrightnessDown exec ~/.local/bin/brightness-control.sh set '1%-'
+bindsym Alt+XF86MonBrightnessUp exec ~/.local/bin/brightness-control.sh set '1%+'
 
 
 
-# Resize mode
+# Resize mode and direct resize keys
 mode "resize" {
     bindsym j resize shrink width 2px
     bindsym k resize grow height 2px
@@ -152,8 +186,30 @@ mode "resize" {
 }
 bindsym $mod+r mode "resize"
 
-bindsym $mod+minus scratchpad show
-bindsym $mod+Shift+minus move scratchpad
+bindsym $mod+minus resize grow width 10 px
+bindsym $mod+equal resize shrink width 10 px
+bindsym $mod+Shift+minus resize shrink height 10 px
+bindsym $mod+Shift+equal resize grow height 10 px
+bindsym $mod+Alt+minus resize grow width 5 px
+bindsym $mod+Alt+equal resize shrink width 5 px
+bindsym $mod+Ctrl+minus resize grow width 30 px
+bindsym $mod+Ctrl+equal resize shrink width 30 px
+
+# Scratchpad, workspaces, and outputs
+bindsym $mod+Alt+s move scratchpad
+bindsym $mod+Tab workspace next
+bindsym $mod+Shift+Tab workspace prev
+bindsym $mod+Ctrl+Tab workspace back_and_forth
+
+bindsym Alt+Tab focus next
+bindsym Alt+Shift+Tab focus prev
+bindsym Ctrl+Alt+Tab focus output next
+bindsym Ctrl+Alt+Shift+Tab focus output prev
+
+bindsym --whole-window $mod+button1 move
+bindsym --whole-window $mod+button3 resize
+bindsym $mod+button4 workspace prev
+bindsym $mod+button5 workspace next
 
 bindsym $mod+1 workspace $ws1
 bindsym $mod+2 workspace $ws2
@@ -176,6 +232,22 @@ bindsym $mod+Shift+7 move container to workspace $ws7
 bindsym $mod+Shift+8 move container to workspace $ws8
 bindsym $mod+Shift+9 move container to workspace $ws9
 bindsym $mod+Shift+0 move container to workspace $ws10
+
+bindsym $mod+Shift+$alt+1 move container to workspace $ws1
+bindsym $mod+Shift+$alt+2 move container to workspace $ws2
+bindsym $mod+Shift+$alt+3 move container to workspace $ws3
+bindsym $mod+Shift+$alt+4 move container to workspace $ws4
+bindsym $mod+Shift+$alt+5 move container to workspace $ws5
+bindsym $mod+Shift+$alt+6 move container to workspace $ws6
+bindsym $mod+Shift+$alt+7 move container to workspace $ws7
+bindsym $mod+Shift+$alt+8 move container to workspace $ws8
+bindsym $mod+Shift+$alt+9 move container to workspace $ws9
+bindsym $mod+Shift+$alt+0 move container to workspace $ws10
+
+bindsym $mod+Shift+$alt+Left move workspace to output left
+bindsym $mod+Shift+$alt+Down move workspace to output down
+bindsym $mod+Shift+$alt+Up move workspace to output up
+bindsym $mod+Shift+$alt+Right move workspace to output right
 
 
 

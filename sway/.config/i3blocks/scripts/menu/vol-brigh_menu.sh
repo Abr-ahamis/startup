@@ -2,86 +2,11 @@
 set -u
 shopt -s lastpipe
 
-# =========================
-# DEPENDENCY CHECK
-# =========================
-install_missing_tools() {
-  local missing_packages=()
-  local missing_commands=()
-  local cmd package
-
-  for cmd in brightnessctl pactl gammastep awk pgrep pkill tput clear stty; do
-    if command -v "$cmd" >/dev/null 2>&1; then
-      continue
-    fi
-
-    missing_commands+=("$cmd")
-    case "$cmd" in
-      brightnessctl) package="brightnessctl" ;;
-      pactl) package="pulseaudio-utils" ;; # replaced below for Arch
-      gammastep) package="gammastep" ;;
-      awk) package="gawk" ;;
-      pgrep|pkill) package="procps" ;;
-      stty) package="coreutils" ;;
-      tput|clear) package="ncurses-bin" ;;
-    esac
-    missing_packages+=("$package")
-  done
-
-  if (( ${#missing_packages[@]} == 0 )); then
-    return 0
-  fi
-
-  clear 2>/dev/null || true
-  echo "========================================"
-  echo " Missing tools detected"
-  echo "========================================"
-  printf '  Command  Package\n'
-  printf '  -------  -------\n'
-  for i in "${!missing_commands[@]}"; do
-    printf '  %-7s  %s\n' "${missing_commands[$i]}" "${missing_packages[$i]}"
-  done
-  echo "========================================"
-  echo "Installing required package(s)..."
-  echo
-
-  local package_manager=apt
-  if command -v pacman >/dev/null 2>&1; then
-    package_manager=pacman
-    for i in "${!missing_packages[@]}"; do
-      [[ "${missing_packages[$i]}" == pulseaudio-utils ]] && missing_packages[$i]=libpulse
-    done
-  fi
-  if [[ "$package_manager" == apt ]] && ! command -v apt-get >/dev/null 2>&1; then
-    echo "No supported package manager was found. Install manually: ${missing_packages[*]}"
-    read -rp "Press Enter to close..."
-    exit 1
-  fi
-
-  if (( EUID == 0 )); then
-    if [[ "$package_manager" == pacman ]]; then pacman -S --needed --noconfirm "${missing_packages[@]}"; else apt-get install -y "${missing_packages[@]}"; fi
-  else
-    if [[ "$package_manager" == pacman ]]; then sudo pacman -S --needed --noconfirm "${missing_packages[@]}"; else sudo apt-get install -y "${missing_packages[@]}"; fi
-  fi
-
-  local still_missing=()
-  for cmd in "${missing_commands[@]}"; do
-    command -v "$cmd" >/dev/null 2>&1 || still_missing+=("$cmd")
-  done
-
-  if (( ${#still_missing[@]} > 0 )); then
-    echo
-    echo "These tools are still missing: ${still_missing[*]}"
-    read -rp "Press Enter to close..."
-    exit 1
-  fi
-
-  echo
-  echo "All required tools are installed."
-  sleep 1
-}
-
-install_missing_tools
+# Dependencies are installed only by main.sh.  Runtime menus never invoke a
+# package manager or sudo; report missing tools instead.
+for required_command in brightnessctl pactl gammastep; do
+  command -v "$required_command" >/dev/null 2>&1 || { echo "Missing $required_command; rerun NEO setup." >&2; exit 127; }
+done
 
 selected=0
 step_brightness=5
@@ -206,7 +131,9 @@ is_night_light_on() {
 
 run_gammastep() {
   pkill -x gammastep >/dev/null 2>&1 || true
-  nohup "$@" >/dev/null 2>&1 &
+  # The menu supplies the temperature itself. Explicit Wayland mode prevents
+  # Gammastep from falling back to GeoClue automatic-location mode.
+  nohup gammastep -m wayland "$@" >/dev/null 2>&1 &
   disown "$!" 2>/dev/null || true
 }
 
@@ -215,7 +142,7 @@ apply_night_light() {
   pct=$(clamp_pct "$1" 1 100)
   temp=$(night_light_temp_from_pct "$pct")
 
-  run_gammastep gammastep -O "$temp"
+  run_gammastep -O "$temp"
   { printf '%s\n' "$pct" > "$night_light_state_file"; } 2>/dev/null || true
   { printf '1\n' > "$night_light_enabled_file"; } 2>/dev/null || true
   toast_msg="Night Light ${pct}% (${temp}K)"

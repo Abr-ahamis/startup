@@ -23,8 +23,8 @@ package_for() {
     debian:audio) echo pipewire pipewire-pulse wireplumber;; arch:audio) echo pipewire pipewire-pulse wireplumber;;
     debian:clipboard|arch:clipboard) echo cliphist;;
     debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman sudo zsh grub2-common dbus dbus-user-session;;
-    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot flameshot nemo brightnessctl pamixer wl-clipboard grim slurp dex git curl wget unzip pipx btop gnome-keyring seahorse gnupg age apparmor bubblewrap cryptsetup fontconfig jq file gammastep blueman zsh;;
+    debian:core) echo swaybg swayidle swaylock wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pamixer wl-clipboard cliphist network-manager network-manager-gnome bluez blueman rfkill xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-user-session brightnessctl dunst libnotify-bin fontconfig jq curl gnome-keyring grub-customizer timeshift libsecret-1-0 libsecret-tools seahorse gnupg age apparmor bubblewrap cryptsetup build-essential pkg-config libsecret-1-dev libpam-gnome-keyring git grub2-common;;
+    arch:core) echo swaybg swayidle swaylock wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pamixer wl-clipboard cliphist networkmanager network-manager-applet bluez bluez-utils blueman rfkill xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus brightnessctl dunst libnotify fontconfig jq curl gnome-keyring timeshift libsecret seahorse gnupg age apparmor bubblewrap cryptsetup base-devel pkgconf git;;
     *) return 1;;
   esac
 }
@@ -32,15 +32,56 @@ package_for() {
 package_installed() { case "$PKG_MANAGER" in apt) dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -qx 'install ok installed';; pacman) pacman -Q "$1" >/dev/null 2>&1;; esac; }
 package_available() { case "$PKG_MANAGER" in apt) apt-cache show "$1" >/dev/null 2>&1;; pacman) pacman -Si "$1" >/dev/null 2>&1;; esac; }
 
+prepare_grub_customizer() {
+  [[ "$DISTRO_ID" == ubuntu ]] || return 0
+  package_installed grub-customizer || package_available grub-customizer && return 0
+  command -v add-apt-repository >/dev/null 2>&1 || return 1
+  timeout --foreground 90s add-apt-repository --yes ppa:danielrichter2007/grub-customizer >>"$SETUP_LOG_FILE" 2>&1 || return 1
+  timeout --foreground 180s apt-get update >>"$SETUP_LOG_FILE" 2>&1
+}
+
 repair_apt() {
   info "Repairing APT/dpkg state."
   run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 10m apt-get -f install -y >>"$SETUP_LOG_FILE" 2>&1 || true
   run_as_root timeout --foreground 5m dpkg --configure -a >>"$SETUP_LOG_FILE" 2>&1 || true
 }
 
+package_display_name() {
+  case "$1" in
+    libsecret-1-0) printf '%s' 'libsecret-1-0' ;;
+    libsecret-tools) printf '%s' 'libsecret-tools' ;;
+    gnome-keyring) printf '%s' 'GNOME Keyring' ;;
+    seahorse) printf '%s' 'Seahorse' ;;
+    gnupg) printf '%s' 'GnuPG' ;;
+    age) printf '%s' 'Age encryption' ;;
+    apparmor) printf '%s' 'AppArmor' ;;
+    bubblewrap) printf '%s' 'Bubblewrap' ;;
+    cryptsetup) printf '%s' 'Cryptsetup' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+package_done() {
+  local package="$1" label
+  label="$(package_display_name "$package")"
+  case "$package" in
+    libsecret-1-0|libsecret-tools) ok_indented "installed: $label" ;;
+    *) ok_indented "installed: $label" ;;
+  esac
+}
+
+package_progress() {
+  local percent="$1" package="$2" filled empty bar
+  filled=$(( percent * 45 / 100 )); empty=$((45 - filled)); bar=''
+  printf -v bar '%*s' "$filled" ''; bar="${bar// /#}"
+  local remainder; printf -v remainder '%*s' "$empty" ''; remainder="${remainder// /-}"
+  printf '  [▶ WORK] [%s%s] %3d%%  %s install: %s\n' "$bar" "$remainder" "$percent" "$PKG_MANAGER" "$package"
+}
+
 install_package() {
   local package="$1" pid rc
   _setup_log_write INFO "Installing package: $package (manager=$PKG_MANAGER)"
+  package_progress 0 "$package"
   case "$PKG_MANAGER" in
     apt)
       run_as_root env DEBIAN_FRONTEND=noninteractive timeout 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package" >>"$SETUP_LOG_FILE" 2>&1 &
@@ -57,7 +98,8 @@ install_package() {
   SETUP_ACTIVE_PID=""
   rm -f -- "$SETUP_ACTIVE_PID_FILE"
   if (( rc == 0 )) && package_installed "$package"; then
-    ok "$package installed"
+    package_progress 100 "$package"
+    package_done "$package"
     return 0
   fi
   warn "$package failed to install; see $SETUP_LOG_FILE"
@@ -114,7 +156,7 @@ install_feature() {
   local missing=()
   package_list="$(package_for "$feature")" || { warn "No package mapping for feature '$feature'"; return 1; }
   for pkg in $package_list; do
-    if package_installed "$pkg"; then ok "$pkg is already installed"; else missing+=("$pkg"); fi
+    if ! package_installed "$pkg"; then missing+=("$pkg"); fi
   done
   (( ${#missing[@]} )) || return 0
   install_packages "${missing[@]}"
@@ -156,7 +198,9 @@ run_packages() {
     backup_ready=1
     backup_package_selections
   fi
-  section_setup "Installing REQUIRED packages"
+  printf '  ──────────────────────────────────────────────────────────────────────\n'
+  printf '  ▶  installation progress\n'
+  printf '  ──────────────────────────────────────────────────────────────────────\n'
   # Refresh package metadata only (never upgrade installed packages), and
   # repair interrupted Debian transactions before installing anything.
   if [[ "$PKG_MANAGER" == apt ]]; then
@@ -165,15 +209,19 @@ run_packages() {
     # background and must never block waiting for a hidden sudo prompt.
     run_as_root true || return 1
   fi
+  prepare_grub_customizer || _setup_log_write WARN 'GRUB Customizer repository preparation was unavailable.'
   collect_required_packages
   MISSING_PACKAGES=()
   local total="${#REQUIRED_PACKAGES[@]}" index=0 pkg
   for pkg in "${REQUIRED_PACKAGES[@]}"; do
     index=$((index + 1))
     if package_installed "$pkg"; then
-      ok "$pkg installed"
-    else
+      package_done "$pkg"
+    elif package_available "$pkg"; then
       MISSING_PACKAGES+=("$pkg")
+    else
+      FAILED_REQUIRED_PACKAGES+=("$pkg")
+      printf '  %s[WARN]%s unavailable: %s\n' "$SETUP_COLOR_WARN" "$SETUP_COLOR_RST" "$pkg"
     fi
   done
   if (( ${#MISSING_PACKAGES[@]} )); then
@@ -192,10 +240,10 @@ run_packages() {
     if (( ${#FAILED_REQUIRED_PACKAGES[@]} )); then
       _setup_log_write WARN "Packages failed: ${FAILED_REQUIRED_PACKAGES[*]}"
     else
-      ok "All required packages installed."
+      ok_indented "All required packages installed. [${#REQUIRED_PACKAGES[@]} components]"
     fi
   else
-    ok "All required packages already installed."
+    ok_indented "All required packages installed. [${#REQUIRED_PACKAGES[@]} components]"
   fi
   if (( backup_ready )); then
     # The backup directory is intentionally root-only.  The elevated tee owns

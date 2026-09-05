@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 # ==================================================
 # 90-report.sh
-# Final "Setup completed" banner + interactive install
-# script picker (only install_*.sh files) + completion banner.
+# Final report, short Sway preview, and completion banner.
 # ==================================================
 
 if [[ -n "${__SETUP_REPORT_LOADED:-}" ]]; then return 0; fi
 __SETUP_REPORT_LOADED=1
 
-optional_command_installed() {
-  local command_name="${1:-}"
-  command -v "$command_name" >/dev/null 2>&1 || [[ -x "$TARGET_HOME/.local/bin/$command_name" ]]
-}
 
 preview_sway_pid() {
   local pid environ
@@ -33,6 +28,20 @@ preview_sway_window() {
   return 1
 }
 
+# Returns success only when the user sends keyboard or pointer input to the
+# nested Sway window during its short preview grace period.
+preview_sway_window_interacted() {
+  local window="$1" awk_status
+  command -v xev >/dev/null 2>&1 || { sleep 3; return 1; }
+  run_as_target env DISPLAY="$DISPLAY" timeout --foreground 3s \
+    xev -id "$window" -event keyboard -event mouse 2>/dev/null |
+    awk '/^(KeyPress|KeyRelease|ButtonPress|ButtonRelease|MotionNotify) event/ { interacted=1; exit } END { exit !interacted }'
+  # xev receives SIGPIPE once awk has seen an interaction.  Its status is
+  # irrelevant; only awk's interaction result determines the preview action.
+  awk_status="${PIPESTATUS[1]}"
+  return "$awk_status"
+}
+
 # The user explicitly wants this exact command attempted at the end of every
 # installer invocation, including a run that completed with reported issues.
 # The guard lets the EXIT cleanup path serve as a backup without launching two
@@ -50,7 +59,7 @@ launch_sway_preview() {
   # nested X11 wlroots environment).  Never terminate the user's real desktop
   # Sway session.
   local pid environ preview_config rc target_config proc_name preview_wallpaper candidate
-  local preview_launcher_pid preview_pid preview_window attempt
+  local preview_launcher_pid preview_pid preview_window attempt preview_closed_by_timeout=0
   for proc_name in sway swayidle swaylock swaybg i3blocks foot wofi; do
     while read -r pid; do
       [[ -r "/proc/$pid/environ" ]] || continue
@@ -89,7 +98,7 @@ EOF
     printf 'output * bg "%s" fill\n' "$preview_wallpaper" >>"$preview_config"
   fi
   run_as_root chown "$TARGET_USER:$TARGET_GROUP" "$preview_config" 2>/dev/null || true
-  printf '%s\n' 'To close ctrl + c in terminal or super +shift + q in the window'
+  info 'Sway preview opens for 3 seconds and closes automatically unless you interact with its window.'
   run_as_target env \
     STARTUP_SWAY_PREVIEW=1 DISPLAY="$DISPLAY" WLR_BACKENDS=x11 WLR_X11_OUTPUTS=1 WLR_X11_SCALE=1 \
     XDG_CURRENT_DESKTOP=sway XDG_SESSION_DESKTOP=sway XDG_SESSION_TYPE=wayland \
@@ -108,6 +117,16 @@ EOF
     [[ -n "$preview_window" ]] && break
     sleep 0.2
   done
+
+  if [[ -n "$preview_window" ]] && preview_sway_window_interacted "$preview_window"; then
+    info 'Sway preview interaction detected; close the preview window when finished.'
+  else
+    info 'No Sway preview interaction detected after 3 seconds; closing the preview.'
+    preview_closed_by_timeout=1
+    [[ -n "$preview_pid" ]] && kill -TERM "$preview_pid" 2>/dev/null || true
+    kill -TERM "$preview_launcher_pid" 2>/dev/null || true
+  fi
+
   while kill -0 "$preview_launcher_pid" 2>/dev/null; do
     if [[ -n "$preview_window" ]] && ! run_as_target env DISPLAY="$DISPLAY" xprop -id "$preview_window" _NET_WM_PID >/dev/null 2>&1; then
       info 'Sway preview window closed; continuing setup.'
@@ -127,7 +146,9 @@ EOF
       kill -TERM "$pid" 2>/dev/null || true
     done < <(pgrep -u "$TARGET_UID" -x "$proc_name" 2>/dev/null || true)
   done
-  (( rc == 0 )) || warn "Sway preview could not be completed; see $SETUP_LOG_FILE"
+  if (( rc != 0 && preview_closed_by_timeout == 0 )); then
+    warn "Sway preview could not be completed; see $SETUP_LOG_FILE"
+  fi
   return 0
 }
 
@@ -135,158 +156,10 @@ launch_final_sway() {
   launch_sway_preview "$@"
 }
 
-# ---------- List install scripts (only install_*.sh) ----------
-scan_install_scripts() {
-  INSTALL_SCRIPTS=()
-  INSTALLED_OPTIONAL_TOOLS=()
-  local install_dir="$SCRIPT_DIR/install"
-  if [[ ! -d "$install_dir" ]]; then
-    return 0
-  fi
-  local f name manifest
-  manifest="$SETUP_RUNTIME_DIR/optional-installers.$$"
-  find "$install_dir" -maxdepth 1 -type f -name 'install_*.sh' -print0 2>/dev/null | sort -z >"$manifest" || return 1
-  while IFS= read -r -d '' f; do
-    [[ -f "$f" ]] || continue
-    name="$(basename "$f")"
-    case "$name" in
-      install_brave.sh) command -v brave-browser >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("Brave"); continue; };;
-      install_protonvpn.sh) { command -v protonvpn-app >/dev/null 2>&1 || command -v protonvpn >/dev/null 2>&1 || command -v protonvpn-cli >/dev/null 2>&1; } && { INSTALLED_OPTIONAL_TOOLS+=("Proton VPN"); continue; };;
-      install_rustscan.sh) command -v rustscan >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("RustScan"); continue; };;
-      install_telegram.sh) command -v telegram-desktop >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("Telegram"); continue; };;
-      install_virtualbox.sh) command -v virtualbox >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("VirtualBox"); continue; };;
-      install_vscode.sh) command -v code >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("VS Code"); continue; };;
-      install_obsidian.sh) command -v obsidian >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("Obsidian"); continue; };;
-      install_zen-browser.sh) command -v zen >/dev/null 2>&1 && { INSTALLED_OPTIONAL_TOOLS+=("Zen Browser"); continue; };;
-      install_npmAIs.sh)
-        optional_command_installed npm && INSTALLED_OPTIONAL_TOOLS+=("npm")
-        optional_command_installed codex && INSTALLED_OPTIONAL_TOOLS+=("Codex CLI")
-        optional_command_installed kilo && INSTALLED_OPTIONAL_TOOLS+=("Kilo CLI")
-        if optional_command_installed npm && optional_command_installed codex && optional_command_installed kilo; then continue; fi
-        ;;
-    esac
-    INSTALL_SCRIPTS+=("$f")
-  done <"$manifest"
-  rm -f -- "$manifest"
-}
-
-# ---------- Run a single install script ----------
-run_install_script() {
-  local script_path="$1"
-  local script_name
-  script_name="$(basename "$script_path")"
-
-  echo
-  printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-  printf '%s[INFO]%s Running: %s\n' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "$script_name"
-  printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-
-  chmod +x "$script_path" 2>/dev/null || true
-  if STARTUP_TARGET_USER="$TARGET_USER" STARTUP_TARGET_HOME="$TARGET_HOME" bash "$script_path"; then
-    printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-    ok "$script_name completed"
-    printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-  else
-    local rc=$?
-    printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-    warn "$script_name returned exit code $rc — continuing with next script"
-    printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-  fi
-}
-
-# ---------- Interactive menu ----------
-select_install_scripts() {
-  SELECTED_INSTALL_INDICES=()
-  local i choice token index found
-  local -a selected=()
-  while true; do
-    main_sep
-    printf '%sSelect optional tools%s\n\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_RST"
-    for i in "${!INSTALL_SCRIPTS[@]}"; do
-      if [[ " ${selected[*]} " == *" $i "* ]]; then
-        printf '  [x] %2d) %s\n' "$((i + 1))" "$(basename "${INSTALL_SCRIPTS[$i]}")"
-      else
-        printf '  [ ] %2d) %s\n' "$((i + 1))" "$(basename "${INSTALL_SCRIPTS[$i]}")"
-      fi
-    done
-    printf '\nType numbers to toggle.  f = install selected, e = exit.\n'
-    read -r -p 'Selection: ' choice || return 1
-    case "${choice,,}" in
-      e|exit|q) return 1;;
-      f|finish|install)
-        SELECTED_INSTALL_INDICES=("${selected[@]}")
-        ((${#SELECTED_INSTALL_INDICES[@]} > 0)) && return 0
-        warn 'No tools selected.'
-        ;;
-      *)
-        for token in $choice; do
-          [[ "$token" =~ ^[0-9]+$ ]] || { warn "Invalid selection: $token"; continue; }
-          index=$((token - 1))
-          ((index >= 0 && index < ${#INSTALL_SCRIPTS[@]})) || { warn "Selection out of range: $token"; continue; }
-          found=0
-          for i in "${!selected[@]}"; do
-            if [[ "${selected[$i]}" == "$index" ]]; then unset 'selected[i]'; found=1; break; fi
-          done
-          ((found == 0)) && selected+=("$index")
-        done
-        selected=("${selected[@]}")
-        ;;
-    esac
-  done
-}
-
-show_install_menu() {
-  scan_install_scripts
-
-  if (( ${#INSTALLED_OPTIONAL_TOOLS[@]} )); then
-    info "Already installed applications:"
-    local tool
-    for tool in "${INSTALLED_OPTIONAL_TOOLS[@]}"; do
-      printf '  %s[ OK ]%s %s installed\n' "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$tool"
-    done
-  fi
-
-  if (( ${#INSTALL_SCRIPTS[@]} == 0 )); then
-    ok "All optional applications are already installed."
-    return 0
-  fi
-
-
-
-  while true; do
-    if ! select_install_scripts; then
-      info "Skipping optional tools installation."
-      return 0
-    fi
-    info "Running ${#SELECTED_INSTALL_INDICES[@]} selected installer(s)..."
-    local idx
-    for idx in "${SELECTED_INSTALL_INDICES[@]}"; do run_install_script "${INSTALL_SCRIPTS[$idx]}"; done
-    scan_install_scripts
-    if ! prompt_yes_no "Install more optional tools?" "n"; then
-      info "Remaining optional tools were not installed."
-      return 0
-    fi
-  done
-}
-
 # ---------- Orchestration ----------
 run_report() {
-  # Preserve the existing single automatic Sway reload, but complete it before
-  # the portal repair so the portal repair is the final required action before
-  # the optional-tools question.
+  # Preserve the existing single automatic Sway reload before the preview.
   reload_target_sway || true
-
-  # Keep the original optional-tools prompt in the report.  The installers
-  # themselves are isolated; selecting one cannot change required-stage state.
-  printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-  printf '%sOptional tools%s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_RST"
-  printf '%s================================================================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
-  if prompt_yes_no "Would you like to install the additional tools?" "n"; then
-    info "Starting tools installation..."
-    show_install_menu
-  else
-    info "Skipping"
-  fi
 
   if (( SETUP_RELOGIN_REQUIRED )); then
     info "Log out and back in to apply the group membership changed during this run."
@@ -337,6 +210,7 @@ run_report() {
     printf 'Failed Packages: %s\n' "${FAILED_REQUIRED_PACKAGES[*]}"
   fi
   echo "Log file     : $SETUP_LOG_FILE"
+  echo "Aliases      : ll, la, gs, ga, gc, gp, gl, pro, ctf, repo"
   echo "Backups      :"
   [[ -d "${SETUP_BACKUP_DIR:-}" ]] && echo "  Installer  : $SETUP_BACKUP_DIR"
   [[ -d "${SETUP_WALLPAPER_BACKUP_DIR:-}" ]] && echo "  Wallpapers : $SETUP_WALLPAPER_BACKUP_DIR"

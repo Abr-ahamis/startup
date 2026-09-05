@@ -30,32 +30,49 @@ start_script() {
   pgrep -u "$uid" -f -- "$script" >/dev/null 2>&1 || "$script" >/dev/null 2>&1 &
 }
 
+# Do not allow distro-provided Gammastep desktop entries to start in the Sway
+# session.  Their default GeoClue location provider is commonly denied and
+# produces repeated errors on systems without enabled location services.
+# A per-user Hidden override follows the XDG autostart specification and leaves
+# the vendor entry untouched. Night Light remains an explicit user action in
+# the brightness menu.
+disable_gammastep_autostart() {
+  local config_home="${XDG_CONFIG_HOME:-$home/.config}" entry name override
+  local -a autostart_dirs=(/etc/xdg/autostart /usr/share/xdg/autostart)
+  for entry in "${autostart_dirs[@]}"/*; do
+    [[ -f "$entry" ]] || continue
+    name="$(basename -- "$entry")"
+    [[ "${name,,}" == *gammastep*.desktop ]] || \
+      grep -Eiq '^[[:space:]]*Exec=.*gammastep([[:space:]]|$)' "$entry" || continue
+    override="$config_home/autostart/$name"
+    mkdir -p "$(dirname -- "$override")" 2>/dev/null || continue
+    printf '[Desktop Entry]\nHidden=true\n' >"$override" 2>/dev/null || true
+  done
+}
+
 command -v dbus-update-activation-environment >/dev/null 2>&1 && dbus-update-activation-environment --systemd DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway || true
 command -v systemctl >/dev/null 2>&1 && systemctl --user import-environment DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR WAYLAND_DISPLAY XDG_CURRENT_DESKTOP || true
 
-autotiling="$home/.local/bin/autotiling"
-autotiling_venv="$home/.local/share/pipx/venvs/autotiling/bin/autotiling"
-autotiling_system="$(command -v autotiling 2>/dev/null || true)"
-if [[ ! -x "$autotiling" && -x "$autotiling_venv" ]]; then
-  mkdir -p "$home/.local/bin" 2>/dev/null || true
-  ln -sfn "$autotiling_venv" "$autotiling" 2>/dev/null || true
-fi
-if [[ -x "$autotiling" ]]; then
-  pgrep -u "$uid" -x autotiling >/dev/null 2>&1 || "$autotiling" >/dev/null 2>&1 &
-elif [[ -x "$autotiling_venv" ]]; then
-  pgrep -u "$uid" -x autotiling >/dev/null 2>&1 || "$autotiling_venv" >/dev/null 2>&1 &
-elif [[ -x "$autotiling_system" ]]; then
-  pgrep -u "$uid" -x autotiling >/dev/null 2>&1 || "$autotiling_system" >/dev/null 2>&1 &
+disable_gammastep_autostart
+
+# Start only in a real Sway session, never in another desktop or in the
+# installer's nested preview. Explicit Wayland/manual-temperature mode means
+# Gammastep never asks GeoClue for location access.
+if [[ -n "${SWAYSOCK:-}" && -n "${WAYLAND_DISPLAY:-}" && "${STARTUP_SWAY_PREVIEW:-0}" != 1 ]]; then
+  # Stop only this user's stale automatic Gammastep process before starting
+  # the managed Sway instance.
+  pkill -u "$uid" -x gammastep >/dev/null 2>&1 || true
+  start_process gammastep gammastep -m wayland -O 4500
+  printf '1\n' >"$runtime/startup-night-light-$uid" 2>/dev/null || true
 fi
 
 start_process nm-applet nm-applet
 start_process blueman-applet blueman-applet
 start_process dunst dunst
-start_process gammastep gammastep -O 4500
 start_process dex dex --autostart --environment sway
-start_script "$home/.local/bin/terminal.sh"
 start_script "$home/.local/bin/opacity.sh"
-start_script "$home/.local/bin/battery-monitor.sh"
+# battery-monitor.service is enabled as a target-user unit by the installer;
+# do not launch a second copy from the session script.
 
 if command -v wl-paste >/dev/null 2>&1 && command -v cliphist >/dev/null 2>&1; then
   pgrep -u "$uid" -f 'wl-paste.*cliphist store' >/dev/null 2>&1 || wl-paste --type text --watch cliphist store >/dev/null 2>&1 &

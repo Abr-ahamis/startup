@@ -129,5 +129,4 @@ run_gnome_desktop_setup() {
   run_as_target_session gsettings set org.gnome.settings-daemon.plugins.media-keys volume-mute "['XF86AudioMute']" || true
   run_as_target_session gsettings set org.gnome.Terminal.Legacy.Settings default-show-menubar false || true
   run_as_target_session gsettings set org.gnome.desktop.interface text-scaling-factor 0.7 || true
-  ok "GNOME desktop settings and keybindings configured"
 }

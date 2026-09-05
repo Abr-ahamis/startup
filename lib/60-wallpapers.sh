@@ -87,7 +87,9 @@ replace_wallpaper() {
 }
 
 run_wallpapers() {
-  section_setup "Wallpapers"
+  printf '\n──────────────────────────────────────────────────────────────────────\n'
+  printf ' ▶  Wallpapers\n'
+  printf '────────────────────────────────────────────────────────────\n'
   require_dir "$SCRIPT_DIR/wallpaper" "wallpaper folder"
   require_file "$SCRIPT_DIR/wallpaper/IMG1.jpg" "wallpaper/IMG1.jpg"
   require_file "$SCRIPT_DIR/wallpaper/IMG2.jpg" "wallpaper/IMG2.jpg"
@@ -98,11 +100,7 @@ run_wallpapers() {
   SETUP_WALLPAPER_BACKUP_DIR="$backup_dir"
   local i source source_name target label
 
-  info "Scanning $root/* for image files..."
   discover_background_images || { warn "Wallpaper directory is unavailable: $root"; return 0; }
-  setup_sep
-  info "Total image files discovered: ${#bg_paths[@]}"
-  setup_sep
 
   for i in "${!bg_paths[@]}"; do
     target="${bg_real_paths[$i]}"
@@ -111,17 +109,17 @@ run_wallpapers() {
     source_name="$(basename -- "$source")"
     if replace_wallpaper "$source" "$target" "$backup_dir" "$root"; then
       replaced+=("$label")
-      printf '  %s[ OK ]%s  %-24s -> %s\n' "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$source_name" "$label"
+      printf '  %s[ OK ]%s %-24s -> %s\n' "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$source_name" "$label"
     else
       skipped+=("$label")
-      printf '  %s[WARN]%s  %-24s -> %s\n' "$SETUP_COLOR_WARN" "$SETUP_COLOR_RST" "$source_name" "$label"
+      printf '  %s[WARN]%s %-24s -> %s\n' "$SETUP_COLOR_WARN" "$SETUP_COLOR_RST" "$source_name" "$label"
       _setup_log_write WARN "Wallpaper replacement failed: $label"
     fi
   done
 
-  setup_sep
-  printf '%s[ OK ]%s Wallpaper scan and replacement finished %s[INFO]%s Replaced: %d\n' \
-    "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "${#replaced[@]}"
+  printf '────────────────────────────────────────────────────────────\n'
+  ok "Wallpaper scan and replacement complete: ${#replaced[@]} replaced"
+  printf '────────────────────────────────────────────────────────────\n'
   if (( ${#skipped[@]} )); then
     warn "Wallpaper files skipped: ${#skipped[@]}; backups are in $backup_dir"
   fi

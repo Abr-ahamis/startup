@@ -35,36 +35,55 @@ force_refresh_sway_wallpaper() {
   ' >>"$SETUP_LOG_FILE" 2>&1 || true
 }
 
+enable_battery_monitor() {
+  local unit="$TARGET_HOME/.config/systemd/user/battery-monitor.service"
+  local wants="$TARGET_HOME/.config/systemd/user/default.target.wants/battery-monitor.service"
+  [[ -f "$unit" && ! -L "$unit" ]] || return 1
+  run_as_target mkdir -p "$(dirname "$wants")" || return 1
+  [[ ! -e "$wants" || -L "$wants" ]] || return 1
+  run_as_target ln -sfn "$unit" "$wants" || return 1
+  [[ -L "$wants" && "$(readlink "$wants")" == "$unit" ]]
+}
+
+configure_portal_preference() {
+  local helper="$TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh"
+  [[ -x "$helper" ]] || return 1
+  run_as_target "$helper" setup no >>"$SETUP_LOG_FILE" 2>&1
+}
+
+configure_autotiling_startup() {
+  local config="$TARGET_HOME/.config/sway/config" line='exec_always --no-startup-id autotiling'
+  [[ -f "$config" ]] || return 1
+  run_as_target grep -qxF "$line" "$config" || printf '%s\n' "$line" | run_as_target tee -a "$config" >/dev/null
+}
+
 run_services() {
-  section_setup "User services, xdg-desktop-portal helper, Sway"
-  if $can_manage_user_session; then
-    _setup_log_write INFO "Updating target user's D-Bus/systemd environment."
-    # Preserve the active desktop identity. Forcing `sway` in a GNOME
-    # session makes xdg-desktop-portal try the wlr backend, which then waits
-    # for a compositor that is not running.
-    run_as_target_session timeout --foreground 10s dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP >>"$SETUP_LOG_FILE" 2>&1 || warn "Could not export the portal environment."
-    # daemon-reload is sufficient after installing user units; daemon-reexec is
-    # disruptive and adds startup latency without making those units visible.
-    run_as_target_session timeout --foreground 15s systemctl --user daemon-reload >>"$SETUP_LOG_FILE" 2>&1 || warn "Could not reload user units."
-    run_as_target_session timeout --foreground 20s systemctl --user enable --now pipewire pipewire-pulse wireplumber battery-monitor.service >>"$SETUP_LOG_FILE" 2>&1 || warn "Some user services could not be started."
+  printf '\n%s──────────────────────────────────────────────────────────────────────%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '  %s%s▶  Services and xdg-desktop-portal%s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '  %s──────────────────────────────────────────────────────────────────────%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  if run_pipx && configure_autotiling_startup; then
+    ok_indented 'autotiling started'
   else
-    defer "No active D-Bus session for $TARGET_USER; user services and portal repair were not run."
+    warn 'autotiling startup could not be configured.'
   fi
-  force_refresh_sway_wallpaper || true
-  if [[ -x "$TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh" ]]; then
-    if $can_manage_user_session; then
-      info "Repairing the portal configuration for the active target session."
-      if run_as_target_session timeout --foreground 30s bash "$TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh" setup >>"$SETUP_LOG_FILE" 2>&1; then
-        ok "Portal configuration verified for the active session"
-      else
-        warn "Portal configuration could not be completed; see $SETUP_LOG_FILE"
-      fi
-    else
-      _setup_log_write DEFERRED "Portal helper not invoked because the target user has no D-Bus session."
-    fi
+  if enable_battery_monitor; then
+    ok_indented 'battery-monitor.service enabled for the next target-user session'
   else
-    warn "Portal helper is missing or not executable: $TARGET_HOME/.config/sway/scripts/fix-sway-portals.sh"
+    warn 'battery-monitor.service could not be enabled for the target user.'
   fi
-  run_gnome_desktop_setup || warn "GNOME desktop settings could not be configured; see $SETUP_LOG_FILE"
-  setup_double_sep
+  if configure_portal_preference; then
+    ok_indented 'Sway portal preference installed; live portal services were not restarted'
+  else
+    warn 'Sway portal preference could not be installed.'
+  fi
+  if target_session_available && run_as_target_session timeout --foreground 15s systemctl --user daemon-reload >>"$SETUP_LOG_FILE" 2>&1; then
+    ok_indented 'Portal configuration verified for the active session'
+  else
+    warn 'Portal configuration could not be verified because the target user session is unavailable.'
+  fi
+  if run_gnome_desktop_setup; then
+    ok_indented 'GNOME desktop settings and keybindings configured'
+  else
+    warn 'GNOME desktop settings and keybindings could not be configured.'
+  fi
 }

@@ -147,16 +147,11 @@ copy_tree_with_backup() {
   [[ "$announce" == "0" ]] || ok "$label installed"
 }
 
-# Shell features live in one POSIX-compatible file so Bash and Zsh always
-# receive identical aliases, helpers, editor defaults, and emergency controls.
-# Shell-specific prompt/completion setup is installed as a small loader block.
+# Shell setup is aliases only. It never changes the user's default shell,
+# prompt, completion, history, or other Bash/Zsh settings.
 shell_shared_features_content() {
   cat <<'EOF'
-# Managed by startup: shared Bash/Zsh shell features.
-# This file intentionally uses syntax accepted by both Bash and Zsh.
-
-export EDITOR="${EDITOR:-nano}"
-export VISUAL="${VISUAL:-$EDITOR}"
+# Managed by startup: aliases only.
 
 alias ll='ls -lah --color=auto'
 alias la='ls -A --color=auto'
@@ -171,7 +166,7 @@ alias gc='git commit'
 alias gp='git push'
 alias gl='git log --oneline --graph --decorate'
 
-# Existing project conveniences, shared rather than Zsh-only.
+# Project convenience aliases.
 alias startpro='mkdir -p ~/pro/{ctf/{htb/{challenges,machines,sherlocks,start,vpn},{thm/{vpn,machines}}},proje,repo}'
 alias pro='cd ~/pro'
 alias ctf='cd ~/pro/ctf'
@@ -184,6 +179,9 @@ alias repo='cd ~/pro/repo'
 alias by='systemctl poweroff'
 alias zz='systemctl suspend'
 alias rb='systemctl reboot'
+
+# Do not write legacy helper functions below into the generated alias file.
+return
 
 doomnow_state_dir() {
   printf '%s\n' "${XDG_STATE_HOME:-$HOME/.local/state}/neo"
@@ -329,6 +327,8 @@ EOF
 }
 
 shell_zsh_loader_content() {
+  shell_bash_loader_content
+  return
   cat <<'EOF'
 # >>> startup shell features >>>
 [[ -r "${XDG_CONFIG_HOME:-$HOME/.config}/startup/shell-common.sh" ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/startup/shell-common.sh"
@@ -457,13 +457,23 @@ install_shell_configuration() {
   rm -f -- "$temp"
   install_shell_loader "$TARGET_HOME/.bashrc" bash || return 1
   install_shell_loader "$TARGET_HOME/.zshrc" zsh || return 1
-  ok "Shared Bash/Zsh aliases and emergency helpers installed"
+  ok 'Aliases added to .bashrc and .zshrc; no shell settings were changed'
 }
 
 run_config_files() {
-  main_sep
+  printf '────────────────────────────────────────────────────────────\n'
+  printf ' ▶  Configuration   COPY, REPLACE, CHANGE  \n'
+  printf '───────────────────────────────────────────────────────────────\n'
+  ok_indented 'Existing managed files are backed up before replacement'
+  printf '\n'
   [[ -d "$SCRIPT_DIR/sway" ]] || { warn "sway resource directory is missing; skipping configuration."; return 0; }
   fix_project_script_permissions "$SCRIPT_DIR"
+
+  if install_grub_theme; then
+    ok_indented 'Copied GRUB theme'
+  else
+    warn 'GRUB theme could not be copied; GRUB update will not be attempted safely.'
+  fi
 
   local failed=0 target
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/foot" "$TARGET_HOME/.config/foot" "Foot configuration" 0 || failed=1
@@ -475,48 +485,18 @@ run_config_files() {
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/flameshot" "$TARGET_HOME/.config/flameshot" "Flameshot configuration" 0 || failed=1
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/wofi" "$TARGET_HOME/.config/wofi" "Wofi configuration" 0 || failed=1
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/systemd" "$TARGET_HOME/.config/systemd" "User systemd units" 0 || failed=1
-  (( failed == 0 )) && ok ".config files copied" || warn "Some .config resources were not copied; existing files were preserved."
-
-  main_sep
+  (( failed == 0 )) && ok_indented 'Copied .config files' || warn "Some .config resources were not copied; existing files were preserved."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/bin" "$TARGET_HOME/.local/bin" "User commands" 0 || failed=1
-  (( failed == 0 )) && ok ".local/bin files copied" || warn "Some user commands were not copied."
-
-  main_sep
+  (( failed == 0 )) && ok_indented 'Copied .local/bin files' || warn "Some user commands were not copied."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/share/fonts" "$TARGET_HOME/.local/share/fonts" "Fonts" 0 || failed=1
   if [[ -d "$SCRIPT_DIR/sway/.local/share/fonts" ]]; then
     run_as_target fc-cache -f "$TARGET_HOME/.local/share/fonts" >/dev/null 2>&1 || warn "Font cache refresh failed; it will refresh on next login."
   fi
-  (( failed == 0 )) && ok "Fonts copied and cache refreshed" || warn "Some fonts or managed configuration files were not installed."
-
-  main_sep
+  (( failed == 0 )) && ok_indented 'Copied fonts and refreshed the cache' || warn "Some fonts or managed configuration files were not installed."
   for target in "$TARGET_HOME/.config/foot" "$TARGET_HOME/.config/i3blocks" "$TARGET_HOME/.config/sway" "$TARGET_HOME/.config/flameshot" "$TARGET_HOME/.config/wofi" "$TARGET_HOME/.config/systemd" "$TARGET_HOME/.local/bin" "$TARGET_HOME/.local/share/fonts"; do
     [[ -d "$target" ]] || continue
     run_as_root chown -R "$TARGET_USER:$TARGET_GROUP" "$target" || warn "Could not fix ownership under $target"
     fix_tree_permissions "$target" 644 || warn "Could not fix permissions under $target"
   done
-  configure_backlight_access || true
-  ok "Permissions updated"
-
-  install_shell_configuration || warn "Could not install the shared Bash/Zsh shell configuration."
-
-  # Preserve the project's existing intent: when zsh is installed, register it
-  # in /etc/shells and make it the target user's login shell.
-  if command -v zsh >/dev/null 2>&1; then
-    local zsh_path
-    zsh_path="$(command -v zsh)"
-    if ! run_as_root grep -qxF "$zsh_path" /etc/shells 2>/dev/null; then
-      printf '%s\n' "$zsh_path" | run_as_root tee -a /etc/shells >/dev/null || warn "Could not add $zsh_path to /etc/shells"
-    fi
-    if run_as_root chsh -s "$zsh_path" "$TARGET_USER"; then
-      if [[ "$(getent passwd "$TARGET_USER" | cut -d: -f7)" == "$zsh_path" ]]; then
-        ok "Default shell for $TARGET_USER set to zsh"
-      else
-        warn "zsh was requested as the default shell for $TARGET_USER but could not be verified"
-      fi
-    else
-      warn "Could not change default shell to zsh for $TARGET_USER"
-    fi
-  else
-    info "zsh is unavailable; .zshrc was generated for use when zsh is installed."
-  fi
+  install_shell_configuration || warn 'Could not add aliases to .bashrc and .zshrc.'
 }

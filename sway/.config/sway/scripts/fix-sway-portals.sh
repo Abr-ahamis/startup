@@ -517,16 +517,13 @@ setup() {
     info "Portal dir: $CFG_DIR"
     printf '\n'
 
-    # Ensure ~/.config is usable.
+    # Ensure ~/.config is usable without changing its permissions: it may
+    # contain unrelated desktop configuration. write_if_changed() creates and
+    # secures only the dedicated portal directory.
     if ! mkdir -p -- "$XDG_CONFIG_HOME"; then
         error "Cannot create XDG config directory:"
         error "  $XDG_CONFIG_HOME"
         return 1
-    fi
-
-    if ! chmod 700 -- "$XDG_CONFIG_HOME" 2>/dev/null; then
-        warn "Could not enforce 700 permissions on:"
-        warn "  $XDG_CONFIG_HOME"
     fi
 
     if ! write_if_changed "$SWAY_PORTALS"; then
@@ -547,11 +544,17 @@ setup() {
 
     printf '\n'
 
-    restart_services || restart_result=$?
+    if [[ "${SETUP_RESTART:-yes}" == no ]]; then
+        info "Portal configuration is ready for the next Sway session; live services were not restarted."
+    else
+        restart_services || restart_result=$?
+    fi
 
     printf '\n'
 
-    case "$restart_result" in
+    case "${SETUP_RESTART:-yes}:$restart_result" in
+        no:0)
+            ;;
         0)
             ok "Portal services restarted."
             ;;
@@ -648,9 +651,14 @@ remove_config() {
 # ---------------------------------------------------------------------------
 
 ACTION="${1:-setup}"
+SETUP_RESTART="${2:-yes}"
 
 case "$ACTION" in
     setup)
+        [[ "$SETUP_RESTART" == yes || "$SETUP_RESTART" == no ]] || {
+            error "Invalid setup restart mode: $SETUP_RESTART"
+            exit 2
+        }
         setup
         exit $?
         ;;
@@ -679,6 +687,7 @@ case "$ACTION" in
         cat >&2 <<EOF
 Usage:
     $SCRIPT_NAME setup
+    $SCRIPT_NAME setup no
     $SCRIPT_NAME restart
     $SCRIPT_NAME status
     $SCRIPT_NAME remove

@@ -216,19 +216,25 @@ run_logged() {
 # ---------- Print helpers ----------
 info() {
   local msg="$*"
-  printf '%s[INFO]%s %s\n' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "$msg"
+  printf '%s%s[INFO]%s %s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "$msg"
   _setup_log_write INFO "$msg"
 }
 
 ok() {
   local msg="$*"
-  printf '%s[ OK ]%s %s\n' "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$msg"
+  printf '%s%s[ OK ]%s %s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$msg"
+  _setup_log_write OK "$msg"
+}
+
+ok_indented() {
+  local msg="$*"
+  printf '  %s%s[ OK ]%s %s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$msg"
   _setup_log_write OK "$msg"
 }
 
 warn() {
   local msg="$*"
-  printf '%s[WARN]%s %s\n' "$SETUP_COLOR_WARN" "$SETUP_COLOR_RST" "$msg" >&2
+  printf '%s%s[WARN]%s %s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_WARN" "$SETUP_COLOR_RST" "$msg" >&2
   _setup_log_write WARN "$msg"
   SETUP_ISSUES+=("[WARN] $msg")
 }
@@ -245,7 +251,7 @@ defer() {
 
 error() {
   local msg="$*"
-  printf '%s[FAIL]%s %s\n' "$SETUP_COLOR_ERR" "$SETUP_COLOR_RST" "$msg" >&2
+  printf '%s%s[FAIL]%s %s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_ERR" "$SETUP_COLOR_RST" "$msg" >&2
   _setup_log_write ERROR "$msg"
   SETUP_ISSUES+=("[FAIL] $msg")
 }
@@ -292,7 +298,7 @@ section() {
 
 section_setup() {
   main_sep
-  printf '%s%s%s\n' "$SETUP_COLOR_BOLD" "$1" "$SETUP_COLOR_RST"
+  printf '%s%s▶  %s%s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_CYAN" "$1" "$SETUP_COLOR_RST"
   _setup_log_write SECTION "$1"
 }
 

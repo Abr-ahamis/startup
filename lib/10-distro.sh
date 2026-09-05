@@ -33,9 +33,19 @@ detect_distro() {
 
 run_distro() {
   detect_distro || exit 1
-  section_setup "System information"
-  printf 'Distribution : %s\nID           : %s\nFamily       : %s\nPackage mgr  : %s\nUser         : %s\nHome         : %s\n' \
-    "$DISTRO_PRETTY" "$DISTRO_ID" "$DISTRO_FAMILY" "$PKG_MANAGER" "$TARGET_USER" "$TARGET_HOME"
+  printf '\n%s╔══════════════════════════════════════════════════════════════════════╗%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '%s║%s%s                             NEO STARTUP                              %s%s║%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST" "$SETUP_COLOR_BOLD" "$SETUP_COLOR_RST" "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '%s║%s                         Installation Report                          %s%s║%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST" "$SETUP_COLOR_DIM" "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '%s╚══════════════════════════════════════════════════════════════════════╝%s\n\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '  %s%s▶  System%s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '  %s──────────────────────────────────────────────────────────────────────%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '  Distribution           %s\n' "$DISTRO_PRETTY"
+  printf '  Package manager        %s\n' "$PKG_MANAGER"
+  printf '  Current environment    %s\n' "${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-TTY}}"
+  printf '  Target user            %s\n' "$TARGET_USER"
+  printf '  Installation mode      Existing OS → Add Sway\n'
+  printf '  OS upgrade    ----->      not requested\n'
+  printf '  GNOME/other desktop removal ---->   existing desktop preserved\n\n'
   if [[ "$DISTRO_ID" == kali ]]; then
     run_as_root install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 644 /dev/null "$TARGET_HOME/.hushlogin" || warn "Could not suppress Kali's login message"
   fi

@@ -22,7 +22,7 @@ CHAR_WIDTH=8            # Rough character width estimate for window sizing.
 CARD_EXTRA=120          # Extra space for spacing, symbols, and padding.
 
 # Height sizing.
-ROW_HEIGHT=48
+ROW_HEIGHT=32
 WINDOW_PAD_Y=36
 
 STYLE="${XDG_CONFIG_HOME:-$HOME/.config}/wofi/key-help.css"
@@ -32,58 +32,84 @@ output_width="$WINDOW_WIDTH"
 output_height="$WINDOW_HEIGHT"
 
 entries=(
-  "Super + Enter|foot"
-  "Super + Shift + Enter|gnome-ter"
-  "Super + D|menu"
-  "Shift + F1|help"
+  "@ Launching apps|"
+  "Super + Enter|terminal"
+  "Super + Alt + Enter|secondary terminal"
+  "Super + Space / D|application launcher"
+  "Super + Alt + Space|apps menu"
+  "Super + Escape|system / power menu"
+  "Super + K / Shift + F1|this shortcut guide"
 
-  "WIN + Shift + E|Nemo"
-  "WIN + Shift + F|Firefox"
-  "WIN + Shift + B|Brave"
-  "WIN + Shift + T|Telegram"
-  "WIN + Shift + N|Gnome-text-editor"
-  "WIN + Shift + S|Flameshot"
-  "WIN + Shift + C|Vscode"
+  "Super + Shift + Enter|browser"
+  "Super + Shift + Alt + B|secondary browser"
+  "Super + Shift + F|file manager"
+  "Super + Shift + T|Telegram"
+  "Super + Shift + N|text editor"
+  "Super + Shift + C|VS Code"
+  "Super + Shift + O|Obsidian"
+  "Print|screenshot"
 
-  "Ctrl + Alt + R|reload sway"
-  "Ctrl + Alt + E|exit sway"
-  "Ctrl + Alt + L|lock"
-  "Ctrl + Alt + P|power menu"
+  "@ Window controls|"
+  "Super + W|close focused window"
+  "Ctrl + Alt + Delete|close all windows (confirmation)"
+  "Super + T|toggle floating"
+  "Super + O|toggle floating and sticky"
+  "Super + F|toggle fullscreen"
+  "Super + J|toggle horizontal / vertical split"
+  "Super + E|toggle horizontal / vertical split"
+  "Super + S|show scratchpad"
+  "Super + Alt + S|send focused window to scratchpad"
+  "Super + A|focus parent container"
 
-  "Super + Shift + Q|kill focused window"
-  "Super + F|fullscreen"
-  "Super + Shift + Space|toggle floating"
-  "Super + Space|toggle layout mode"
-
-  "Super + Arrows|focus windows"
-  "Super + H J K L|focus left / down / up / right"
-  "Super + A|focus parent"
-
-  "Super + Shift + Arrows|move windows"
+  "@ Navigating|"
+  "Super + Arrows|focus in a direction"
+  "Super + H / L|focus left / right"
+  "Super + Up Arrow|focus up"
+  "Super + Shift + Arrows|move window in a direction"
   "Super + Shift + H J K L|move left / down / up / right"
+  "Alt + Tab / Shift + Tab|next / previous window"
+  "Ctrl + Alt + Tab|next output"
+  "Ctrl + Alt + Shift + Tab|previous output"
 
-  "Super + S|stacking layout"
-  "Super + W|tabbed layout"
-  "Super + E|toggle split"
+  "@ Workspaces and resize|"
+  "Super + 1 … 0|switch workspace"
+  "Super + Shift + 1 … 0|move window to workspace"
+  "Super + Shift + Alt + 1 … 0|move window without switching workspace"
+  "Super + Tab / Shift + Tab|next / previous workspace"
+  "Super + Ctrl + Tab|last workspace"
+  "Super + Shift + Alt + Arrows|move workspace to output"
 
+  "Super + - / =|grow / shrink width"
+  "Super + Shift + - / =|shrink / grow height"
+  "Super + Alt + - / =|small width resize"
+  "Super + Ctrl + - / =|large width resize"
   "Super + R|enter resize mode"
-  "J / Left|shrink width"
-  "K / Down|grow height"
-  "L / Up|shrink height"
-  "; / Right|grow width"
-  "Enter / Escape / Super + R|leave resize mode"
+  "Super + Left / Right Mouse|move / resize window"
+  "Super + Mouse Wheel|previous / next workspace"
 
-  "Super + -|show scratchpad"
-  "Super + Shift + -|move to scratchpad"
+  "@ System controls|"
+  "Super + Ctrl + L|lock screen"
+  "Super + Ctrl + A|audio and brightness menu"
+  "Super + Ctrl + B|Bluetooth menu"
+  "Super + Ctrl + W|Wi-Fi menu"
+  "Super + Ctrl + P|power menu"
+  "Super + Ctrl + T|system monitor"
+  "Super + Ctrl + C|screenshot"
+  "Super + Ctrl + V|clipboard manager"
+  "Super + Ctrl + N|toggle Night Light"
+  "Super + Ctrl + Delete|turn displays off"
 
-  "Super + 1 2 3 4 5 6 7 8 9 0|switch workspace"
-  "Super + Shift + 1 2 3 4 5 6 7 8 9 0|move container to workspace"
+  "@ Notifications|"
+  "Super + ,|dismiss notification"
+  "Super + Shift + ,|dismiss all notifications"
+  "Super + Ctrl + ,|pause / resume notifications"
 
-  "Alt + F6|volume -5"
-  "Alt + F7|volume +5"
-  "Alt + F8|mute"
-  "Alt + F9|brightness -2"
-  "Alt + F10|brightness +2"
+  "@ Hardware adjustments|"
+  "Volume Keys|volume down / up / mute (5%)"
+  "Alt + Volume Keys|precise volume down / up (1%)"
+  "Brightness Keys|brightness down / up (2%)"
+  "Shift + Brightness Keys|minimum / maximum brightness"
+  "Alt + Brightness Keys|precise brightness down / up (1%)"
 )
 
 # Get the focused monitor size from Sway if possible.
@@ -169,6 +195,11 @@ combo_markup() {
 card() {
   local combo="$1"
   local action="$2"
+
+  if [[ "$combo" == '@ '* ]]; then
+    printf '<span foreground="#a78bfa"><b>%s</b></span>\n' "${combo#@ }"
+    return
+  fi
 
   printf '%s <span foreground="#64748b">=</span> <span foreground="#cbd5e1">%s</span>\n' \
     "$(combo_markup "$combo")" "$action"

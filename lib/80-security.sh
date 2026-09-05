@@ -26,10 +26,14 @@ security_find_git_helper() {
 
 security_build_git_helper() {
   local source_dir="/usr/share/doc/git/contrib/credential/libsecret"
-  install_feature git_libsecret
+  local pkg
+  for pkg in $(package_for git_libsecret); do
+    package_installed "$pkg" || { warn "$pkg is required for the Git libsecret helper but is unavailable."; return 1; }
+    ok_indented "$pkg is already installed"
+  done
   [[ -f "$source_dir/Makefile" ]] || return 1
-  info "Building Git libsecret helper (maximum 30 seconds)..."
-  run_logged "Building Git libsecret helper" run_as_root timeout --foreground 30s make -C "$source_dir" || return 1
+  info 'Building Git libsecret helper (maximum 30 seconds)...'
+  run_as_root timeout --foreground 30s make -C "$source_dir" >>"$SETUP_LOG_FILE" 2>&1 || return 1
   [[ -x "$source_dir/git-credential-libsecret" ]] || return 1
   run_as_root install -D -m 755 "$source_dir/git-credential-libsecret" /usr/local/libexec/git-core/git-credential-libsecret
 }
@@ -61,7 +65,7 @@ security_keyring_runtime_check() {
   local runtime keyring_dir owner
   runtime="$(target_runtime_dir)"
   keyring_dir="${GNOME_KEYRING_CONTROL:-$runtime/keyring}"
-  target_session_available || { info "GNOME Keyring runtime checks deferred until the target user session is active."; return 0; }
+  target_session_available || { warn "GNOME Keyring runtime checks require an active target-user session."; return 1; }
   if run_as_target pgrep -f '^/usr/bin/gnome-keyring-daemon([[:space:]]|$)' >/dev/null 2>&1; then ok 'GNOME Keyring daemon running'; else warn 'GNOME Keyring daemon is not running'; fi
   if run_as_target_session timeout --foreground 5s busctl --user status org.freedesktop.secrets >/dev/null 2>&1; then
     ok 'GNOME Secret Service available'
@@ -80,35 +84,34 @@ security_configure_vscode() {
   run_as_root install -d -m 700 "$(dirname "$argv")" || return 1
   run_as_target env TARGET_ARGV="$argv" python3 -c 'import json,os,pathlib,tempfile; p=pathlib.Path(os.environ["TARGET_ARGV"]); d=json.loads(p.read_text()) if p.exists() else {}; assert isinstance(d,dict); d["password-store"]="gnome-libsecret"; p.parent.mkdir(parents=True,exist_ok=True); fd,t=tempfile.mkstemp(prefix=".argv.",dir=p.parent); f=os.fdopen(fd,"w"); json.dump(d,f,indent=2); f.write(chr(10)); f.close(); os.replace(t,p)' >>"$SETUP_LOG_FILE" 2>&1 || return 1
   run_as_root chown "$TARGET_USER:$TARGET_GROUP" "$argv" && run_as_root chmod 600 "$argv" || return 1
-  ok 'VS Code gnome-libsecret integration configured'
+  return 0
 }
 
 run_security() {
-  setup_double_sep
-  printf '%sSECURITY LAYER : Credential + System Protection%s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_RST"
-  setup_double_sep
-  section_setup 'Secret Storage Verification'
-  install_feature secret
-  if command -v gnome-keyring-daemon >/dev/null 2>&1; then ok "GNOME Keyring                installed"; else warn "GNOME Keyring is unavailable"; fi
-  if command -v secret-tool >/dev/null 2>&1; then ok "Libsecret Tools              installed"; else warn "Libsecret tools are unavailable"; fi
-  setup_sep
+  printf '\n%s%s▶  SECURITY LAYER: Credential + System Protection%s\n' "$SETUP_COLOR_BOLD" "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '%s════════════════════════════════════════════════════════════════%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
+  printf '────────────────────────────────────────────────────────────\n'
+  printf ' ▶ Secret Storage Verification\n'
+  printf '────────────────────────────────────────────────────────────\n'
+  command -v gnome-keyring-daemon >/dev/null 2>&1 || { warn 'GNOME Keyring is unavailable.'; return 1; }
+  command -v secret-tool >/dev/null 2>&1 || { warn 'Libsecret Tools are unavailable.'; return 1; }
   security_keyring_runtime_check
-  setup_sep
-  command -v seahorse >/dev/null 2>&1 && ok "Seahorse                     installed"
-  command -v gpg >/dev/null 2>&1 && ok "GnuPG                        installed"
-  command -v age >/dev/null 2>&1 && ok "Age encryption                installed"
-  command -v aa-status >/dev/null 2>&1 && ok "AppArmor                     installed"
-  command -v bwrap >/dev/null 2>&1 && ok "Bubblewrap                   installed"
-  command -v cryptsetup >/dev/null 2>&1 && ok "Cryptsetup                   installed"
-  section_setup 'Browser Credential Protection'
+  printf '────────────────────────────────────────────────────────────\n'
+  printf ' ▶ Browser Credential Protection\n\n'
+  printf '────────────────────────────────────────────────────────────\n'
   local browser flags
+  local found_browser=0
   for browser in chromium google-chrome brave-browser; do
     command -v "$browser" >/dev/null 2>&1 || continue
+    found_browser=1
     case "$browser" in chromium) flags="$TARGET_HOME/.config/chromium-flags.conf";; google-chrome) flags="$TARGET_HOME/.config/chrome-flags.conf";; brave-browser) flags="$TARGET_HOME/.config/brave-flags.conf";; esac
     security_write_browser_flag "$flags" && ok "$browser detected — using GNOME Secret Service" || warn "Could not configure $browser credential storage."
   done
-  section_setup 'Application Credential Protection'
-  security_configure_vscode || warn "VS Code keyring integration could not be configured."
-  security_configure_git_libsecret && ok "Git libsecret credential helper configured and verified" || warn "Git libsecret repair could not be completed."
-  security_configure_pam_keyring && ok "PAM gnome-keyring unlock configured" || warn "PAM GNOME Keyring integration could not be completed."
+  (( found_browser )) || warn 'No supported browser was found for GNOME Secret Service integration.'
+  printf '────────────────────────────────────────────────────────────\n'
+  printf ' ▶  Application Credential Protection\n'
+  printf ' ────────────────────────────────────────────────────────────\n'
+  security_configure_vscode && ok 'VS Code GNOME libsecret integration configured' || warn "VS Code keyring integration could not be configured."
+  security_configure_git_libsecret && ok 'Git libsecret credential helper configured and verified' || warn "Git libsecret repair could not be completed."
+  security_configure_pam_keyring && ok 'PAM GNOME Keyring unlock configured' || warn "PAM GNOME Keyring integration could not be completed."
 }
