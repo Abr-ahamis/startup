@@ -1,6 +1,6 @@
 # NEO STARSHIP: a compact two-line prompt with useful project context.
 
-add_newline = true
+add_newline = false
 command_timeout = 200
 
 format = """

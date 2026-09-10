@@ -4,6 +4,7 @@ set -u
 launcher="$HOME/.config/sway/scripts/launch-app.sh"
 declare -a nodes=()
 declare -a apps=()
+declare -A icon_cache=()
 
 add_node() { nodes+=("$1"$'\t'"$2"); }
 add_app() { apps+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"); }
@@ -123,41 +124,32 @@ add_app '󰆍  Development/󰌘  API & Testing' '󰌘  HTTPie' 'http' 'term:http
 add_app '󰆍  Development/󰌘  API & Testing' '󰌘  Insomnia' 'insomnia' 'cmd:insomnia'
 add_app '󰆍  Development/󰏫  Documentation & Notes' '󰠮  Obsidian' 'obsidian' 'launcher:obsidian'
 
-# The security tree is deliberately deep: Pentesting -> domain -> subcategory -> tool.
-add_node '󰓛  Information Gathering' '󰍉  DNS Analysis'
-add_node '󰓛  Information Gathering' '󰜁  Host Discovery'
-add_node '󰓛  Information Gathering' '󰍉  Network & Port Scanning'
-add_node '󰖟  Web Application Analysis' '󰌘  Web Proxies'
-add_node '󰖟  Web Application Analysis' '󰍉  Web Enumeration'
-add_node '󰖟  Web Application Analysis' '󰒓  Web Vulnerability Scanning'
-add_node '󰖟  Web Application Analysis' '󰌘  API Security'
-add_node '󰖟  Web Application Analysis' '󰈳  Web Exploitation'
 add_app '󰒓  Pentesting/󰞋  Most Used Tools' '󰞋  Nmap' 'nmap' 'term:nmap --help'
 add_app '󰒓  Pentesting/󰞋  Most Used Tools' '󰞋  Burp Suite' 'burpsuite' 'cmd:burpsuite'
 add_app '󰒓  Pentesting/󰞋  Most Used Tools' '󰞋  Metasploit' 'msfconsole' 'term:msfconsole'
 add_app '󰒓  Pentesting/󰞋  Most Used Tools' '󰞋  Wireshark' 'wireshark' 'cmd:wireshark'
 add_app '󰒓  Pentesting/󰞋  Most Used Tools' '󰞋  Gobuster' 'gobuster' 'term:gobuster'
 add_app '󰒓  Pentesting/󰞋  Most Used Tools' '󰞋  SQLmap' 'sqlmap' 'term:sqlmap --help'
-add_app '󰓛  Information Gathering/󰍉  DNS Analysis' '󰍉  dig' 'dig' 'term:dig'
-add_app '󰓛  Information Gathering/󰍉  DNS Analysis' '󰍉  dnsrecon' 'dnsrecon' 'term:dnsrecon --help'
-add_app '󰓛  Information Gathering/󰍉  DNS Analysis' '󰍉  dnsenum' 'dnsenum' 'term:dnsenum --help'
-add_app '󰓛  Information Gathering/󰜁  Host Discovery' '󰜁  arp-scan' 'arp-scan' 'term:arp-scan --help'
-add_app '󰓛  Information Gathering/󰜁  Host Discovery' '󰜁  netdiscover' 'netdiscover' 'term:netdiscover'
-add_app '󰓛  Information Gathering/󰜁  Host Discovery' '󰜁  fping' 'fping' 'term:fping --help'
-add_app '󰓛  Information Gathering/󰍉  Network & Port Scanning' '󰍉  Nmap' 'nmap' 'term:nmap'
-add_app '󰓛  Information Gathering/󰍉  Network & Port Scanning' '󰍉  Masscan' 'masscan' 'term:masscan --help'
-add_app '󰓛  Information Gathering/󰍉  Network & Port Scanning' '󰍉  Unicornscan' 'unicornscan' 'term:unicornscan'
-add_app '󰖟  Web Application Analysis/󰌘  Web Proxies' '󰌘  Burp Suite' 'burpsuite' 'cmd:burpsuite'
-add_app '󰖟  Web Application Analysis/󰌘  Web Proxies' '󰌘  Caido' 'caido' 'cmd:caido'
-add_app '󰖟  Web Application Analysis/󰌘  Web Proxies' '󰌘  OWASP ZAP' 'zaproxy' 'cmd:zaproxy'
-add_app '󰖟  Web Application Analysis/󰍉  Web Enumeration' '󰍉  Gobuster' 'gobuster' 'term:gobuster'
-add_app '󰖟  Web Application Analysis/󰍉  Web Enumeration' '󰍉  ffuf' 'ffuf' 'term:ffuf'
-add_app '󰖟  Web Application Analysis/󰍉  Web Enumeration' '󰍉  dirsearch' 'dirsearch' 'term:dirsearch'
-add_app '󰖟  Web Application Analysis/󰒓  Web Vulnerability Scanning' '󰒓  Nikto' 'nikto' 'term:nikto'
-add_app '󰖟  Web Application Analysis/󰒓  Web Vulnerability Scanning' '󰒓  nuclei' 'nuclei' 'term:nuclei'
-add_app '󰖟  Web Application Analysis/󰌘  API Security' '󰌘  Postman' 'postman' 'cmd:postman'
-add_app '󰖟  Web Application Analysis/󰈳  Web Exploitation' '󰆼  sqlmap' 'sqlmap' 'term:sqlmap'
-add_app '󰖟  Web Application Analysis/󰈳  Web Exploitation' '󰈳  commix' 'commix' 'term:commix'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰍉  dig' 'dig' 'term:dig'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰍉  dnsrecon' 'dnsrecon' 'term:dnsrecon --help'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰍉  dnsenum' 'dnsenum' 'term:dnsenum --help'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰜁  arp-scan' 'arp-scan' 'term:arp-scan --help'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰜁  netdiscover' 'netdiscover' 'term:netdiscover'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰜁  fping' 'fping' 'term:fping --help'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰍉  Nmap' 'nmap' 'term:nmap'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰍉  Masscan' 'masscan' 'term:masscan --help'
+add_app '󰒓  Pentesting/󰓛  Information Gathering' '󰍉  Unicornscan' 'unicornscan' 'term:unicornscan'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰌘  Burp Suite' 'burpsuite' 'cmd:burpsuite'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰌘  Caido' 'caido' 'cmd:caido'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰌘  OWASP ZAP' 'zaproxy' 'cmd:zaproxy'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰍉  Gobuster' 'gobuster' 'term:gobuster'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰍉  ffuf' 'ffuf' 'term:ffuf'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰍉  dirsearch' 'dirsearch' 'term:dirsearch'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰒓  Nikto' 'nikto' 'term:nikto'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰒓  nuclei' 'nuclei' 'term:nuclei'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰌘  Postman' 'postman' 'cmd:postman'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰆼  sqlmap' 'sqlmap' 'term:sqlmap'
+add_app '󰒓  Pentesting/󰖟  Web Application Analysis' '󰈳  commix' 'commix' 'term:commix'
 add_app '󰒓  Pentesting/󰒓  Vulnerability Analysis' '󰒓  OpenVAS / Greenbone' 'gvm-start|openvas' 'cmd:gvm-start|cmd:openvas'
 add_app '󰒓  Pentesting/󰒓  Vulnerability Analysis' '󰒓  Nuclei' 'nuclei' 'term:nuclei'
 add_app '󰒓  Pentesting/󰒓  Vulnerability Analysis' '󰒓  Nikto' 'nikto' 'term:nikto'
@@ -202,6 +194,54 @@ has_command() {
   return 1
 }
 
+desktop_icon_for() {
+  local checks="$1" candidate desktop icon desktop_dir
+  local -a candidates
+  [[ ${icon_cache[$checks]+set} ]] && { printf '%s' "${icon_cache[$checks]}"; return 0; }
+  IFS='|' read -ra candidates <<<"$checks"
+  for candidate in "${candidates[@]}"; do
+    for desktop_dir in \
+      "$HOME/.local/share/applications" \
+      "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
+      /usr/local/share/applications \
+      /usr/share/applications \
+      /var/lib/flatpak/exports/share/applications; do
+      [[ -d "$desktop_dir" ]] || continue
+      while IFS= read -r desktop; do
+        icon="$(awk -v command="$candidate" -F= '
+          $1 == "Icon" { icon = $2 }
+          $1 == "Exec" {
+            executable = $2
+            sub(/^[[:space:]]*/, "", executable)
+            sub(/[[:space:]].*/, "", executable)
+            sub(/^.*\//, "", executable)
+          }
+          END { if (executable == command) print icon }
+        ' "$desktop")"
+        [[ -n "$icon" ]] || continue
+        icon_cache["$checks"]="$icon"
+        printf '%s' "$icon"
+        return 0
+      done < <(find "$desktop_dir" -type f -name '*.desktop' -print 2>/dev/null)
+    done
+  done
+  icon_cache["$checks"]=''
+  return 1
+}
+
+section_icon_for() {
+  case "$1" in
+    *'Common Apps') printf '%s' 'applications-utilities' ;;
+    *Internet) printf '%s' 'applications-internet' ;;
+    *Development) printf '%s' 'applications-development' ;;
+    *Pentesting) printf '%s' 'applications-security' ;;
+    *'Media & Graphics') printf '%s' 'applications-multimedia' ;;
+    *'Linux Apps') printf '%s' 'applications-system' ;;
+    *'System Tools') printf '%s' 'preferences-system' ;;
+    *) printf '%s' 'folder' ;;
+  esac
+}
+
 path_available() {
   local app_path app_label app_checks app_action
   while IFS=$'\t' read -r app_path app_label app_checks app_action; do
@@ -211,20 +251,33 @@ path_available() {
 }
 
 menu_for() {
-  local current_path="$1" node_path node_label app_path app_label app_checks app_action child_path
+  local current_path="$1" node_path node_label app_path app_label app_checks app_action child_path icon entry_label entry_icon
   local -a entries=()
   while IFS=$'\t' read -r node_path node_label; do
     if [[ -z "$current_path" && "$node_path" != */* ]] || [[ "$node_path" == "$current_path"/* && "${node_path#"$current_path"/}" != */* ]]; then
       child_path="${node_path:+$node_path/}$node_label"
-      path_available "$child_path" && entries+=("$node_label")
+      if path_available "$child_path"; then
+        entries+=("$node_label"$'\t'"$(section_icon_for "$node_label")")
+      fi
     fi
   done < <(printf '%s\n' "${nodes[@]}")
   while IFS=$'\t' read -r app_path app_label app_checks app_action; do
-    [[ "$app_path" == "$current_path" ]] && has_command "$app_checks" && entries+=("$app_label")
+    if [[ "$app_path" == "$current_path" ]] && has_command "$app_checks"; then
+      icon="$(desktop_icon_for "$app_checks" || true)"
+      [[ -n "$icon" ]] || icon='application-x-executable'
+      entries+=("$app_label"$'\t'"$icon")
+    fi
   done < <(printf '%s\n' "${apps[@]}")
-  [[ -n "$current_path" ]] && entries+=('󰅬  Back')
+  [[ -n "$current_path" ]] && entries+=('󰅬  Back'$'\t''go-previous')
   ((${#entries[@]})) || return 1
-  printf '%s\n' "${entries[@]}" | wofi --dmenu --prompt "󰍉  Applications${current_path:+ / $current_path}" --insensitive --matching fuzzy --sort_order alphabetical --style "$HOME/.config/wofi/style.css"
+  for entry in "${entries[@]}"; do
+    IFS=$'\t' read -r entry_label entry_icon <<<"$entry"
+    if [[ -n "$entry_icon" ]]; then
+      printf '%s\0icon\x1f%s\n' "$entry_label" "$entry_icon"
+    else
+      printf '%s\n' "$entry_label"
+    fi
+  done | wofi --dmenu --prompt "󰍉  Applications${current_path:+ / $current_path}" --insensitive --matching fuzzy --sort_order alphabetical --style "$HOME/.config/wofi/style.css"
 }
 
 launch_action() {

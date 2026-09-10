@@ -54,8 +54,7 @@ _startup_update_prompt() {
     _startup_arrow='✗'
   fi
   # PROMPT is rebuilt here on every precmd, so no promptsubst is required.
-  PROMPT="
-%F{cyan}${_startup_pwd}%f %F{cyan}${_startup_arrow}%f "
+  PROMPT="%F{cyan}${_startup_pwd}%f %F{cyan}${_startup_arrow}%f "
 }
 
 _startup_prompt_native() {

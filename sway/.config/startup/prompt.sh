@@ -60,7 +60,7 @@ _startup_prompt_native() {
   unset STARSHIP_CONFIG STARSHIP_SESSION_KEY STARSHIP_SHELL STARSHIP_CACHE 2>/dev/null || true
   _startup_update_prompt
   PROMPT_COMMAND='_startup_update_prompt'
-  PS1='\n\[\e[36m\]${_startup_pwd}\[\e[0m\] \[\e[36m\]${_startup_arrow}\[\e[0m\] '
+  PS1='\[\e[36m\]${_startup_pwd}\[\e[0m\] \[\e[36m\]${_startup_arrow}\[\e[0m\] '
 }
 
 _startup_prompt_starship
