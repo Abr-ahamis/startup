@@ -10,7 +10,7 @@ if command -v eza >/dev/null 2>&1; then
 		'--time-style=+%d %b %H:%M'
 	)
 	unalias ls 2>/dev/null || true
-	ls() {
+	function ls {
 		local show_all=false arg
 		local paths=()
 		for arg in "$@"; do
