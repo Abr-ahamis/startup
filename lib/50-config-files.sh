@@ -182,9 +182,40 @@ shell_shared_features_content() {
   cat <<'EOF'
 # Managed by startup: aliases only.
 
-alias ll='ls -lah --color=auto'
-alias la='ls -A --color=auto'
-alias l='ls -CF --color=auto'
+if command -v eza >/dev/null 2>&1; then
+  alias ls='eza -lh --header --group-directories-first --icons=auto --color=auto'
+  alias ll='eza -lah --header --group-directories-first --icons=auto --color=auto'
+  alias la='eza -lah --header --group-directories-first --icons=auto --color=auto'
+  alias l='eza -lh --header --group-directories-first --icons=auto --color=auto'
+else
+  if command -v eza >/dev/null 2>&1; then
+    _EZA_BASE=(--long --header --icons=always --group-directories-first --color=always '--time-style=+%d %b %H:%M')
+    unalias ls 2>/dev/null || true
+    ls() {
+      local show_all=false arg
+      local paths=()
+      for arg in "$@"; do
+        case "$arg" in
+          -*) [[ "$arg" == *a* || "$arg" == *A* ]] && show_all=true ;;
+          *) paths+=("$arg") ;;
+        esac
+      done
+      if $show_all; then
+        eza "${_EZA_BASE[@]}" --all "${paths[@]}"
+      else
+        eza "${_EZA_BASE[@]}" "${paths[@]}"
+      fi
+    }
+    alias ll='eza --long --header --icons=always --group-directories-first --color=always --time-style="+%d %b %H:%M"'
+    alias la='eza --long --header --icons=always --group-directories-first --color=always --all --time-style="+%d %b %H:%M"'
+    alias lt='eza --tree --icons=always --group-directories-first --color=always'
+    alias l='eza --long --header --icons=always --group-directories-first --color=always --time-style="+%d %b %H:%M"'
+  else
+    alias ll='ls -lah --color=auto'
+    alias la='ls -A --color=auto'
+    alias l='ls -CF --color=auto'
+  fi
+fi
 alias c='clear'
 alias ..='cd ..'
 alias ...='cd ../..'

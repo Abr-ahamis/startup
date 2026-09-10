@@ -1,6 +1,6 @@
 # Managed by startup: Bash prompt.
 # Prefers a running starship (host Omarchy owns the prompt and must not be
-# clobbered); falls back to a native two-line prompt with git status when
+# clobbered); falls back to a native two-line prompt when
 # starship is unavailable (e.g. inside distrobox containers).
 
 _startup_dir="${XDG_CONFIG_HOME:-$HOME/.config}/startup"
@@ -47,7 +47,6 @@ _startup_git_status() {
 _startup_update_prompt() {
   _startup_rc=$?
   _startup_pwd=$(_startup_dir_trunc "$PWD")
-  _startup_git=$(_startup_git_status)
   if [ "$_startup_rc" -eq 0 ]; then
     _startup_arrow='❯'
   else
@@ -61,7 +60,7 @@ _startup_prompt_native() {
   unset STARSHIP_CONFIG STARSHIP_SESSION_KEY STARSHIP_SHELL STARSHIP_CACHE 2>/dev/null || true
   _startup_update_prompt
   PROMPT_COMMAND='_startup_update_prompt'
-  PS1='\n\[\e[1;36m\][${_startup_pwd}${_startup_git}]\[\e[0m\] \[\e[1;36m\]${_startup_arrow}\[\e[0m\] '
+  PS1='\n\[\e[36m\]${_startup_pwd}\[\e[0m\] \[\e[36m\]${_startup_arrow}\[\e[0m\] '
 }
 
 _startup_prompt_starship

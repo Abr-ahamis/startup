@@ -1,32 +1,91 @@
+# NEO STARSHIP: a compact two-line prompt with useful project context.
+
 add_newline = true
 command_timeout = 200
-format = "[$directory$git_branch$git_status]($style)$character"
 
-[character]
-error_symbol = "[✗](bold cyan)"
-success_symbol = "[❯](bold cyan)"
+format = """
+$os\
+$directory\
+$git_branch\
+$git_status\
+$python\
+$nodejs\
+$rust\
+$docker_context\
+$cmd_duration
+$line_break\
+$character
+"""
+
+[os]
+disabled = false
+style = "cyan"
+format = "[$symbol]($style) "
+
+[os.symbols]
+Arch = "󰣇"
+Ubuntu = "󰕈"
+Debian = "󰣚"
+Kali = ""
+Linux = "󰌽"
 
 [directory]
-truncation_length = 2
-truncation_symbol = "…/"
+style = "bold cyan"
 repo_root_style = "bold cyan"
+truncation_length = 3
+truncation_symbol = "…/"
+home_symbol = "~"
+read_only = " 󰌾"
+read_only_style = "red"
 repo_root_format = "[$repo_root]($repo_root_style)[$path]($style)[$read_only]($read_only_style) "
 
 [git_branch]
-format = "[$branch]($style) "
-style = "italic cyan"
+symbol = " "
+format = "[$symbol$branch]($style) "
+style = "bold cyan"
 
 [git_status]
-format     = '[$all_status]($style)'
-style      = "cyan"
-ahead      = "⇡${count} "
-diverged   = "⇕⇡${ahead_count}⇣${behind_count} "
-behind     = "⇣${count} "
+format = "[$all_status$ahead_behind]($style) "
+style = "cyan"
+ahead = "⇡${count}"
+behind = "⇣${count}"
+diverged = "⇕⇡${ahead_count}⇣${behind_count}"
 conflicted = " "
+untracked = "?${count} "
+modified = "${count} "
+staged = "●${count} "
+renamed = "»${count} "
+deleted = "✘${count} "
+stashed = ""
 up_to_date = " "
-untracked  = "? "
-modified   = " "
-stashed    = ""
-staged     = ""
-renamed    = ""
-deleted    = ""
+
+[cmd_duration]
+min_time = 1500
+format = "[ 󰔟 $duration]($style) "
+style = "dimmed cyan"
+show_milliseconds = true
+
+[python]
+symbol = " "
+style = "cyan"
+format = "[$symbol$version]($style) "
+
+[nodejs]
+symbol = " "
+style = "cyan"
+format = "[$symbol$version]($style) "
+
+[rust]
+symbol = " "
+style = "cyan"
+format = "[$symbol$version]($style) "
+
+[docker_context]
+symbol = " "
+style = "cyan"
+format = "[$symbol$context]($style) "
+
+[character]
+success_symbol = "[❯](bold cyan)"
+error_symbol = "[✗](bold red)"
+vimcmd_symbol = "[❮](bold cyan)"

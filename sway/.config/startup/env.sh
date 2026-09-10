@@ -30,3 +30,6 @@ if command -v dircolors >/dev/null 2>&1; then
   fi
   unset _startup_dc
 fi
+
+# Keep the modern palette after dircolors has loaded its defaults.
+export LS_COLORS='di=01;36:ln=01;35:ex=01;32:fi=38;5;252:pi=33:so=35:bd=33;01:cd=33;01:or=31;01:mi=31;01:'

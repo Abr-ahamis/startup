@@ -48,14 +48,14 @@ _startup_git_status() {
 _startup_update_prompt() {
   _startup_rc=$?
   _startup_pwd=$(_startup_dir_trunc "$PWD")
-  _startup_git=$(_startup_git_status)
   if [ "$_startup_rc" -eq 0 ]; then
     _startup_arrow='❯'
   else
     _startup_arrow='✗'
   fi
   # PROMPT is rebuilt here on every precmd, so no promptsubst is required.
-  PROMPT="%B%F{cyan}[${_startup_pwd}${_startup_git}]%f%b %B%F{cyan}${_startup_arrow}%f%b "
+  PROMPT="
+%F{cyan}${_startup_pwd}%f %F{cyan}${_startup_arrow}%f "
 }
 
 _startup_prompt_native() {
