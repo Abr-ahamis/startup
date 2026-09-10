@@ -25,7 +25,7 @@ package_expected_command() {
   case "$1" in
     sway|swaybg|swayidle|swaylock|i3blocks|wofi|foot|dex|gammastep|flameshot|grim|slurp|pipewire|pipewire-pulse|wireplumber|pamixer|cliphist|rfkill|brightnessctl|dunst|jq|curl|timeshift|seahorse|age|cryptsetup|git|python3|pkg-config) printf '%s\n' "$1" ;;
     wl-clipboard) echo wl-copy;; network-manager|networkmanager) echo nmcli;; network-manager-gnome|network-manager-applet) echo nm-applet;;
-    bluez|bluez-utils) echo bluetoothd;; blueman) echo blueman-manager;; libnotify-bin|libnotify) echo notify-send;; fontconfig) echo fc-cache;;
+    bluez) printf '%s\n' /usr/lib/bluetooth/bluetoothd;; bluez-utils) echo bluetoothctl;; blueman) echo blueman-manager;; libnotify-bin|libnotify) echo notify-send;; fontconfig) echo fc-cache;;
     gnome-keyring) echo gnome-keyring-daemon;; grub-customizer) echo grub-customizer;; libsecret-tools) echo secret-tool;; gnupg) echo gpg;; apparmor) echo aa-status;; bubblewrap) echo bwrap;;
   esac
 }
@@ -41,7 +41,7 @@ package_verify() {
     pacman) pacman -Qi "$package" >/dev/null 2>&1 || { PACKAGE_VERIFY_REASON='pacman -Qi failed'; record_verification "$package" FAILED "$PACKAGE_VERIFY_REASON"; return 1; };; esac
   local expected_command
   expected_command="$(package_expected_command "$package" || true)"
-  if [[ -n "$expected_command" ]] && ! command -v "$expected_command" >/dev/null 2>&1; then
+  if [[ -n "$expected_command" ]] && ! { [[ "$expected_command" == /* && -x "$expected_command" ]] || command -v "$expected_command" >/dev/null 2>&1; }; then
     PACKAGE_VERIFY_REASON="database is installed but expected executable is absent: $expected_command"; record_verification "$package" FAILED "$PACKAGE_VERIFY_REASON"; return 1
   fi
   PACKAGE_VERIFY_REASON="version=$version${expected_command:+ command=$expected_command}"; record_verification "$package" OK "$PACKAGE_VERIFY_REASON"

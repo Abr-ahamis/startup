@@ -42,6 +42,13 @@ preview_sway_window_interacted() {
   return "$awk_status"
 }
 
+close_preview_sway() {
+  local preview_pid="$1" preview_launcher_pid="$2" preview_window="$3"
+  [[ -n "$preview_window" ]] && run_as_target env DISPLAY="$DISPLAY" xkill -id "$preview_window" >/dev/null 2>&1 || true
+  [[ -n "$preview_pid" ]] && kill -TERM "$preview_pid" 2>/dev/null || true
+  [[ -n "$preview_launcher_pid" ]] && kill -TERM "$preview_launcher_pid" 2>/dev/null || true
+}
+
 # The user explicitly wants this exact command attempted at the end of every
 # installer invocation, including a run that completed with reported issues.
 # The guard lets the EXIT cleanup path serve as a backup without launching two
@@ -124,21 +131,19 @@ EOF
   else
     info 'No Sway preview interaction detected after 3 seconds; closing the preview.'
     preview_closed_by_timeout=1
-    [[ -n "$preview_pid" ]] && kill -TERM "$preview_pid" 2>/dev/null || true
-    kill -TERM "$preview_launcher_pid" 2>/dev/null || true
+    close_preview_sway "$preview_pid" "$preview_launcher_pid" "$preview_window"
   fi
 
   while kill -0 "$preview_launcher_pid" 2>/dev/null; do
     if (( preview_deadline > 0 && SECONDS >= preview_deadline )); then
       info 'Sway preview interaction limit reached; closing the preview.'
       preview_closed_by_timeout=1
-      [[ -n "$preview_pid" ]] && kill -TERM "$preview_pid" 2>/dev/null || true
-      kill -TERM "$preview_launcher_pid" 2>/dev/null || true
+      close_preview_sway "$preview_pid" "$preview_launcher_pid" "$preview_window"
       break
     fi
     if [[ -n "$preview_window" ]] && ! run_as_target env DISPLAY="$DISPLAY" xprop -id "$preview_window" _NET_WM_PID >/dev/null 2>&1; then
       info 'Sway preview window closed; continuing setup.'
-      [[ -n "$preview_pid" ]] && kill -TERM "$preview_pid" 2>/dev/null || true
+      close_preview_sway "$preview_pid" "$preview_launcher_pid" "$preview_window"
       break
     fi
     sleep 0.2

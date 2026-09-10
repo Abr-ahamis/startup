@@ -122,7 +122,13 @@ install_grub_theme() {
   GRUB_THEME_PATH="$theme"; _setup_log_write VERIFY "subject=GRUB-theme result=OK source=$src destination=$dest"
 }
 run_grub() {
-  printf '\n ▶ GRUB\n'; install_grub_theme || return 1
+  printf '\n ▶ GRUB\n'
+  if [[ ! -d /boot/grub ]]; then
+    info 'GRUB is not installed or active on this system; skipping GRUB theme installation.'
+    _setup_log_write INFO 'GRUB stage skipped: /boot/grub is unavailable.'
+    return 0
+  fi
+  install_grub_theme || return 1
   if ! grub_regenerate; then
     grub_rollback_all_themes
     required_failure 'GRUB regeneration failed; previous theme, defaults, and grub.cfg were restored when available'; return 1

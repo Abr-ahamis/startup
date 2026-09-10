@@ -2,22 +2,127 @@
 set -u
 
 launcher="$HOME/.config/sway/scripts/launch-app.sh"
+category_file="${BASH_SOURCE[0]%/*}/app-categories.conf"
 declare -a nodes=()
 declare -a apps=()
 declare -A icon_cache=()
 
-add_node() { nodes+=("$1"$'\t'"$2"); }
-add_app() { apps+=("$1"$'\t'"$2"$'\t'"$3"$'\t'"$4"); }
+normalize_path() {
+  local path="$1"
+  path="${path/#󰀻  Common Apps/󰀻  Apps/󰀻  All Applications}"
+  path="${path/#󰒓  Pentesting/󰒓  Security/󰒓  Pentesting}"
+  path="${path/#󰝤  Media & Graphics/󰀻  Apps/󰀻  All Applications}"
+  path="${path/#󰌽  Linux Apps/󰒓  System}"
+  path="${path/#󰒓  System Tools/󰒓  System}"
+  path="${path//  IDEs & Editors/  Editors & IDEs}"
+  path="${path//  Containers & Virtualization/  Containers}"
+  path="${path//󰏫  Image/󰏫  Images}"
+  printf '%s' "$path"
+}
+
+category_submenu_label() {
+  case "$1" in
+    'Browsers') printf '%s' '󰈹  Browsers' ;;
+    'Communication') printf '%s' '󰞉  Communication' ;;
+    'Email') printf '%s' '󰞉  Email' ;;
+    'Cloud') printf '%s' '󰆼  Cloud' ;;
+    'Network Tools') printf '%s' '󰒓  Network Tools' ;;
+    'Editors & IDEs') printf '%s' '  Editors & IDEs' ;;
+    'Languages') printf '%s' '󰙨  Languages' ;;
+    'Git & Version Control') printf '%s' '󰅧  Git & Version Control' ;;
+    'Containers') printf '%s' '  Containers' ;;
+    'Databases') printf '%s' '󰆼  Databases' ;;
+    'Build & Debug') printf '%s' '󰒓  Build & Debug' ;;
+    'API & Testing') printf '%s' '󰌘  API & Testing' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+add_node() {
+  local parent="$1" label="$2"
+  case "$parent" in
+    '󰀻  Common Apps') parent='󰀻  Apps' ;;
+    '󰒓  Pentesting') parent='󰒓  Security/󰒓  Pentesting' ;;
+    '󰝤  Media & Graphics') parent='󰝤  Media' ;;
+    '󰌽  Linux Apps'|'󰒓  System Tools') parent='󰒓  System' ;;
+  esac
+  [[ -z "$parent" ]] && case "$label" in
+    '󰀻  Common Apps') label='󰀻  Apps' ;;
+    '󰒓  Pentesting') return ;;
+    '󰝤  Media & Graphics') label='󰝤  Media' ;;
+    '󰌽  Linux Apps'|'󰒓  System Tools') label='󰒓  System' ;;
+  esac
+  label="${label//  IDEs & Editors/  Editors & IDEs}"
+  label="${label//  Containers & Virtualization/  Containers}"
+  label="${label//󰏫  Image/󰏫  Images}"
+  [[ -z "$parent" ]] && parent='.'
+  local node="$parent"$'\t'"$label"
+  for existing in "${nodes[@]}"; do [[ "$existing" == "$node" ]] && return; done
+  nodes+=("$node")
+}
+
+add_app() {
+  local path="$1" label="$2" checks="$3" action="$4"
+  path="$(normalize_path "$path")"
+  if [[ "$path" == '󰀻  Apps/󰀻  All Applications/  Everyday' ]]; then
+    path='󰀻  Apps/󰀻  All Applications'
+  fi
+  if [[ "$1" == '󰀻  Common Apps/  Everyday' && "$action" == term:* || "$label" == '  Terminal' ]]; then
+    path='󰆍  Development/󰆍  Terminals & Shells'
+  fi
+  apps+=("$path"$'\t'"$label"$'\t'"$checks"$'\t'"$action")
+}
 
 # Every menu item has a path, so new levels do not require new navigation code.
-add_node '' '󰀻  Common Apps'
+add_node '' '󰀻  Apps'
 add_node '' '󰖟  Internet'
+add_node '' '󰉇  Office'
 add_node '' '󰆍  Development'
-add_node '' '󰒓  Pentesting'
-add_node '' '󰝤  Media & Graphics'
-add_node '' '󰌽  Linux Apps'
-add_node '' '󰒓  System Tools'
-add_node '󰀻  Common Apps' '  Everyday'
+add_node '' '󰒓  Security'
+add_node '' '󰒓  System'
+add_node '' '󰐥  Power'
+add_node '󰀻  Apps' '󰍉  Search Applications'
+add_node '󰖟  Internet' '󰞉  Email'
+add_node '󰖟  Internet' '󰆼  Cloud'
+add_node '󰆍  Development' '  Editors & IDEs'
+add_node '󰆍  Development' '󰙨  Languages'
+add_node '󰆍  Development' '󰅧  Git & Version Control'
+add_node '󰆍  Development' '  Containers'
+add_node '󰆍  Development' '󰆼  Databases'
+add_node '󰆍  Development' '󰒓  Build & Debug'
+add_node '󰆍  Development' '󰌘  API & Testing'
+add_node '󰒓  Security' '󰒓  Pentesting'
+add_node '󰒓  Security/󰒓  Pentesting' '󰓛  Information Gathering'
+add_node '󰒓  Security/󰒓  Pentesting' '󰖟  Web Application Analysis'
+add_node '󰒓  Security/󰒓  Pentesting' '󰒓  Vulnerability Analysis'
+add_node '󰒓  Security/󰒓  Pentesting' '󰗚  Password Attacks'
+add_node '󰒓  Security/󰒓  Pentesting' '󰤨  Wireless Testing'
+add_node '󰒓  Security/󰒓  Pentesting' '󰈳  Exploitation'
+add_node '󰒓  Security/󰒓  Pentesting' '󰆍  Reverse Engineering'
+add_node '󰒓  Security/󰒓  Pentesting' '󰒒  Digital Forensics'
+add_node '󰒓  System' '󰍹  System Monitor'
+add_node '󰒓  System' '󰋊  Disks'
+add_node '󰒓  System' '󰒓  Software'
+add_node '󰒓  System' '󰖩  Displays'
+add_node '󰒓  System' '󰖩  Network'
+add_node '󰒓  System' '󰂯  Bluetooth'
+add_node '󰒓  System' '󰕾  Audio'
+add_node '󰒓  System' '󰦖  Logs'
+add_node '󰀻  Apps' '󰕷  Recently Used'
+add_node '󰀻  Apps' '󰘵  Favorites'
+add_node '󰀻  Apps' '󰀻  All Applications'
+add_node '󰉇  Office' '󰏫  Documents'
+add_node '󰉇  Office' '󰃖  PDF'
+add_node '󰉇  Office' '󰏫  Notes'
+add_node '󰉇  Office' '󰮫  Calculator'
+add_node '󰉇  Office' '󰃰  Calendar'
+add_node '󰐥  Power' '󰌾  Lock'
+add_node '󰐥  Power' '󰒳  Suspend'
+add_node '󰐥  Power' '󰒳  Hibernate'
+add_node '󰐥  Power' '󰍿  Logout'
+add_node '󰐥  Power' '󰑐  Restart'
+add_node '󰐥  Power' '󰐥  Shutdown'
+add_node '󰀻  Apps' '󰀻  All Applications'
 add_node '󰖟  Internet' '󰈹  Browsers'
 add_node '󰖟  Internet' '󰞉  Communication'
 add_node '󰖟  Internet' '󰒓  Network Tools'
@@ -186,10 +291,67 @@ add_app '󰒓  System Tools/󰕾  Audio' '󰕾  Volume and brightness' 'pamixer|
 add_app '󰒓  System Tools/⏻  Power' '⏻  Power menu' 'systemctl' 'term:systemctl --help; exec bash'
 add_app '󰒓  System Tools/󰒓  Desktop Controls' '󰒓  Sway Settings' 'swaymsg' 'term:swaymsg -t get_tree | less'
 
+add_app '󰀻  Apps/󰘵  Favorites' '󰈹  Firefox' 'firefox' 'cmd:firefox'
+add_app '󰀻  Apps/󰘵  Favorites' '󰨞  VS Code' 'code|codium' 'launcher:code'
+add_app '󰀻  Apps/󰘵  Favorites' '  Telegram' 'telegram-desktop|Telegram' 'launcher:telegram'
+add_app '󰀻  Apps/󰕷  Recently Used' '󰈹  Firefox' 'firefox' 'cmd:firefox'
+add_app '󰀻  Apps/󰕷  Recently Used' '󰨞  VS Code' 'code|codium' 'launcher:code'
+add_app '󰀻  Apps/󰕷  Recently Used' '  Telegram' 'telegram-desktop|Telegram' 'launcher:telegram'
+
+load_desktop_apps() {
+  local desktop desktop_name desktop_dir desktop_id category_root category_submenu mapped_path
+  declare -A seen_desktops=()
+  for desktop_dir in \
+    "$HOME/.local/share/applications" \
+    "${XDG_DATA_HOME:-$HOME/.local/share}/applications" \
+    /usr/local/share/applications \
+    /usr/share/applications \
+    /var/lib/flatpak/exports/share/applications; do
+    [[ -d "$desktop_dir" ]] || continue
+    while IFS= read -r desktop; do
+      [[ ${seen_desktops[$desktop]+set} ]] && continue
+      seen_desktops["$desktop"]=1
+      grep -q '^Type=Application' "$desktop" || continue
+      grep -q '^NoDisplay=true' "$desktop" && continue
+      desktop_name="$(awk -F= '$1 == "Name" { print substr($0, index($0, "=") + 1); exit }' "$desktop")"
+      [[ -n "$desktop_name" ]] || continue
+      desktop_id="${desktop##*/}"
+      category_root='󰀻  Apps'
+      category_submenu='󰀻  All Applications'
+      if [[ -r "$category_file" ]]; then
+        while IFS='|' read -r mapped_id mapped_root mapped_submenu; do
+          [[ -z "$mapped_id" || "$mapped_id" == \#* ]] && continue
+          [[ "$mapped_id" == "$desktop_id" ]] || continue
+          case "$mapped_root" in
+            Apps) category_root='󰀻  Apps' ;;
+            Files) category_root='  Files' ;;
+            Internet) category_root='󰖟  Internet' ;;
+            Development) category_root='󰆍  Development' ;;
+            Security) category_root='󰒓  Security' ;;
+            Media) category_root='󰀻  Apps'; mapped_submenu='All Applications' ;;
+            Office) category_root='󰉇  Office' ;;
+            System) category_root='󰒓  System' ;;
+            Settings) category_root='󰒓  System'; mapped_submenu='System Tools' ;;
+            Power) category_root='󰐥  Power' ;;
+          esac
+          category_submenu="$(category_submenu_label "$mapped_submenu")"
+          break
+        done < "$category_file"
+      fi
+      mapped_path="$category_root/$category_submenu"
+      add_app "$mapped_path" "$desktop_name" '__desktop__' "desktop:$desktop"
+      add_app '󰀻  Apps/󰀻  All Applications' "$desktop_name" '__desktop__' "desktop:$desktop"
+    done < <(find "$desktop_dir" -type f -name '*.desktop' -print 2>/dev/null | sort)
+  done
+}
+
+load_desktop_apps
+
 has_command() {
   local candidate
   local -a candidates
   IFS='|' read -ra candidates <<<"$1"
+  [[ "$1" == '__desktop__' ]] && return 0
   for candidate in "${candidates[@]}"; do command -v "$candidate" >/dev/null 2>&1 && return 0; done
   return 1
 }
@@ -231,19 +393,32 @@ desktop_icon_for() {
 
 section_icon_for() {
   case "$1" in
-    *'Common Apps') printf '%s' 'applications-utilities' ;;
+    *Apps|*'Common Apps') printf '%s' 'applications-utilities' ;;
+    *Files) printf '%s' 'folder' ;;
     *Internet) printf '%s' 'applications-internet' ;;
     *Development) printf '%s' 'applications-development' ;;
-    *Pentesting) printf '%s' 'applications-security' ;;
-    *'Media & Graphics') printf '%s' 'applications-multimedia' ;;
-    *'Linux Apps') printf '%s' 'applications-system' ;;
-    *'System Tools') printf '%s' 'preferences-system' ;;
+    *Security|*Pentesting) printf '%s' 'applications-security' ;;
+    *Media|*'Media & Graphics') printf '%s' 'applications-multimedia' ;;
+    *Office) printf '%s' 'applications-office' ;;
+    *System|*'Linux Apps'|*'System Tools') printf '%s' 'applications-system' ;;
+    *Settings) printf '%s' 'preferences-system' ;;
+    *Power) printf '%s' 'system-shutdown' ;;
     *) printf '%s' 'folder' ;;
   esac
 }
 
+desktop_icon_for_action() {
+  local action="$1" desktop
+  desktop="${action#desktop:}"
+  [[ "$action" == desktop:* && -f "$desktop" ]] || return 1
+  awk -F= '$1 == "Icon" { print substr($0, index($0, "=") + 1); exit }' "$desktop"
+}
+
 path_available() {
   local app_path app_label app_checks app_action
+  while IFS=$'\t' read -r app_path app_label; do
+    [[ "$app_path" == "$1" || "$app_path" == "$1/"* ]] && return 0
+  done < <(printf '%s\n' "${nodes[@]}")
   while IFS=$'\t' read -r app_path app_label app_checks app_action; do
     [[ "$app_path" == "$1" || "$app_path" == "$1/"* ]] && has_command "$app_checks" && return 0
   done < <(printf '%s\n' "${apps[@]}")
@@ -254,30 +429,84 @@ menu_for() {
   local current_path="$1" node_path node_label app_path app_label app_checks app_action child_path icon entry_label entry_icon
   local -a entries=()
   while IFS=$'\t' read -r node_path node_label; do
-    if [[ -z "$current_path" && "$node_path" != */* ]] || [[ "$node_path" == "$current_path"/* && "${node_path#"$current_path"/}" != */* ]]; then
-      child_path="${node_path:+$node_path/}$node_label"
-      if path_available "$child_path"; then
+    if [[ -z "$current_path" && "$node_path" == '.' ]] || [[ "$node_path" == "$current_path"/* && "${node_path#"$current_path"/}" != */* ]]; then
+      [[ "$node_path" == '.' ]] && child_path="$node_label" || child_path="$node_path/$node_label"
+      if [[ "$child_path" == '󰍉  Search Applications' ]] || path_available "$child_path"; then
         entries+=("$node_label"$'\t'"$(section_icon_for "$node_label")")
       fi
     fi
   done < <(printf '%s\n' "${nodes[@]}")
   while IFS=$'\t' read -r app_path app_label app_checks app_action; do
-    if [[ "$app_path" == "$current_path" ]] && has_command "$app_checks"; then
-      icon="$(desktop_icon_for "$app_checks" || true)"
+    if [[ ( -z "$current_path" && "$app_path" == '.' ) || "$app_path" == "$current_path" ]] && has_command "$app_checks"; then
+      if [[ "$app_checks" == '__desktop__' ]]; then
+        icon="$(desktop_icon_for_action "$app_action" || true)"
+      else
+        icon="$(desktop_icon_for "$app_checks" || true)"
+      fi
       [[ -n "$icon" ]] || icon='application-x-executable'
       entries+=("$app_label"$'\t'"$icon")
     fi
   done < <(printf '%s\n' "${apps[@]}")
   [[ -n "$current_path" ]] && entries+=('󰅬  Back'$'\t''go-previous')
-  ((${#entries[@]})) || return 1
+  ((${#entries[@]})) || entries+=('󰋼  No applications available'$'\t''dialog-information')
   for entry in "${entries[@]}"; do
     IFS=$'\t' read -r entry_label entry_icon <<<"$entry"
-    if [[ -n "$entry_icon" ]]; then
-      printf '%s\0icon\x1f%s\n' "$entry_label" "$entry_icon"
-    else
-      printf '%s\n' "$entry_label"
+    printf '%s\0icon\x1f%s\n' "$entry_label" "$entry_icon"
+  done | wofi \
+    --dmenu \
+    --prompt "󰍉  Applications${current_path:+ / $current_path}" \
+    --insensitive \
+    --matching contains \
+    --sort_order alphabetical \
+    --allow-images \
+    --cache-file /dev/null \
+    --location center \
+    --width 420 \
+    --height 620 \
+    --style "$HOME/.config/wofi/style.css"
+}
+
+launch_desktop_app() {
+  local desktop="$1" exec_line executable
+  [[ -f "$desktop" ]] || return 1
+  if command -v gio >/dev/null 2>&1 && gio launch "$desktop" >/dev/null 2>&1; then
+    return 0
+  fi
+  exec_line="$(awk -F= '$1 == "Exec" { print substr($0, index($0, "=") + 1); exit }' "$desktop")"
+  [[ -n "$exec_line" ]] || return 1
+  executable="${exec_line%% *}"
+  executable="${executable##*/}"
+  command -v "$executable" >/dev/null 2>&1 || return 1
+  exec "$executable"
+}
+
+search_applications() {
+  local app_path app_label app_checks app_action icon selected
+  local -a entries=()
+  declare -A seen_actions=()
+  while IFS=$'\t' read -r app_path app_label app_checks app_action; do
+    [[ "$app_checks" == '__desktop__' ]] || continue
+    [[ ${seen_actions[$app_action]+set} ]] && continue
+    seen_actions["$app_action"]=1
+    icon="$(desktop_icon_for_action "$app_action" || true)"
+    [[ -n "$icon" ]] || icon='application-x-executable'
+    entries+=("$app_label"$'\t'"$icon"$'\t'"$app_action")
+  done < <(printf '%s\n' "${apps[@]}")
+  selected="$(for entry in "${entries[@]}"; do
+    IFS=$'\t' read -r app_label icon app_action <<<"$entry"
+    printf '%s\0icon\x1f%s\n' "$app_label" "$icon"
+  done | wofi --dmenu --prompt '󰍉  Search Applications' --insensitive --matching contains \
+    --allow-images --cache-file /dev/null --location center --width 420 --height 620 \
+    --style "$HOME/.config/wofi/style.css")" || true
+  [[ -n "$selected" ]] || return 0
+  while IFS=$'\t' read -r app_path app_label app_checks app_action; do
+    [[ "$app_label" == "$selected" && "$app_checks" == '__desktop__' ]] || continue
+    if launch_action "$app_action"; then
+      return 0
     fi
-  done | wofi --dmenu --prompt "󰍉  Applications${current_path:+ / $current_path}" --insensitive --matching fuzzy --sort_order alphabetical --style "$HOME/.config/wofi/style.css"
+    command -v notify-send >/dev/null 2>&1 && notify-send 'Application launch failed' "$app_label"
+    return 1
+  done < <(printf '%s\n' "${apps[@]}")
 }
 
 launch_action() {
@@ -286,6 +515,7 @@ launch_action() {
   IFS='|' read -ra action_parts <<<"$action"
   for action_part in "${action_parts[@]}"; do
     case "$action_part" in
+      desktop:*) launch_desktop_app "${action_part#desktop:}"; return $? ;;
       launcher:*) exec "$launcher" "${action_part#launcher:}" ;;
       cmd:*) candidate="${action_part#cmd:}"; command -v "$candidate" >/dev/null 2>&1 && exec "$candidate" ;;
       term:*) exec foot bash -lc "${action_part#term:}; exec bash" ;;
@@ -297,12 +527,20 @@ current_path=''
 while :; do
   choice="$(menu_for "$current_path" || true)"
   [[ -n "$choice" ]] || exit 0
+  [[ "$choice" == '󰋼  No applications available' ]] && exit 0
   if [[ "$choice" == *Back ]]; then current_path="${current_path%/*}"; continue; fi
+  if [[ "$choice" == '󰍉  Search Applications' ]]; then search_applications; exit 0; fi
   next_path="${current_path:+$current_path/}$choice"
   has_child=0
   for node in "${nodes[@]}"; do [[ "$node" == "$next_path"$'\t'* ]] && has_child=1 && break; done
   if ((has_child)); then current_path="$next_path"; continue; fi
   while IFS=$'\t' read -r app_path app_label app_checks app_action; do
-    [[ "$app_path" == "$current_path" && "$app_label" == "$choice" ]] && launch_action "$app_action" && exit 0
+    [[ "$app_label" == "$choice" ]] || continue
+    if [[ ( -z "$current_path" && "$app_path" == '.' ) || "$app_path" == "$current_path" ]]; then
+      if ! launch_action "$app_action"; then
+        command -v notify-send >/dev/null 2>&1 && notify-send 'Application launch failed' "$app_label"
+      fi
+      exit 0
+    fi
   done < <(printf '%s\n' "${apps[@]}")
 done
