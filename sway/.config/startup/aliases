@@ -1,0 +1,28 @@
+# Managed by startup: aliases (kept identical between Bash and Zsh).
+
+alias ll='ls -lah --color=auto'
+alias la='ls -A --color=auto'
+alias l='ls -CF --color=auto'
+alias c='clear'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline --graph --decorate'
+
+# Project convenience aliases.
+alias startpro='mkdir -p ~/pro/{ctf/{htb/{challenges,machines,sherlocks,start,vpn},{thm/{vpn,machines}}},proje,repo}'
+alias pro='cd ~/pro'
+alias ctf='cd ~/pro/ctf'
+alias htb='cd ~/pro/ctf/htb'
+alias htbvpn='cd ~/pro/ctf/htb/vpn'
+alias thm='cd ~/pro/ctf/thm'
+alias thmvpn='cd ~/pro/ctf/thm/vpn'
+alias proje='cd ~/pro/proje'
+alias repo='cd ~/pro/repo'
+alias by='systemctl poweroff'
+alias zz='systemctl suspend'
+alias rb='systemctl reboot'

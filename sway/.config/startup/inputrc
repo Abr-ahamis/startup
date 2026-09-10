@@ -1,0 +1,6 @@
+# Managed by startup: GNU readline configuration.
+set bell-style none
+set completion-ignore-case on
+set show-all-if-ambiguous on
+set colored-stats on
+set page-completions off

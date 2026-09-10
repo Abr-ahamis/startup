@@ -174,8 +174,10 @@ copy_tree_with_backup() {
   [[ "$announce" == "0" ]] || ok "$label installed"
 }
 
-# Shell setup is aliases only. It never changes the user's default shell,
-# prompt, completion, history, or other Bash/Zsh settings.
+# Legacy fallback used only when the managed sway/.config/startup tree is
+# absent from the project checkout: aliases only, no prompt or shell
+# settings. Normal installs deploy the full tree instead (see
+# install_shell_configuration below).
 shell_shared_features_content() {
   cat <<'EOF'
 # Managed by startup: aliases only.
@@ -347,94 +349,17 @@ EOF
 shell_bash_loader_content() {
   cat <<'EOF'
 # >>> startup shell features >>>
-# Shared aliases/functions are installed separately to keep Bash and Zsh equal.
+# Loaded by both Bash and Zsh; shell-common.sh dispatches on the running shell.
 [ -r "${XDG_CONFIG_HOME:-$HOME/.config}/startup/shell-common.sh" ] && . "${XDG_CONFIG_HOME:-$HOME/.config}/startup/shell-common.sh"
 # <<< startup shell features <<<
 EOF
 }
 
 shell_zsh_loader_content() {
+  # Zsh uses the same loader pointer as Bash: shell-common.sh dispatches on
+  # the running shell, so aliases, the terminal gate and the prompt stay in
+  # sync from a single source of truth without duplicating any configuration.
   shell_bash_loader_content
-  return
-  cat <<'EOF'
-# >>> startup shell features >>>
-[[ -r "${XDG_CONFIG_HOME:-$HOME/.config}/startup/shell-common.sh" ]] && source "${XDG_CONFIG_HOME:-$HOME/.config}/startup/shell-common.sh"
-
-# Managed interactive Zsh configuration, based on the project profile.
-setopt autocd interactivecomments magicequalsubst nonomatch notify numericglobsort promptsubst
-WORDCHARS='_-'
-PROMPT_EOL_MARK=""
-bindkey -e
-bindkey ' ' magic-space
-bindkey '^U' backward-kill-line
-bindkey '^[[3;5~' kill-word
-bindkey '^[[3~' delete-char
-bindkey '^[[1;5C' forward-word
-bindkey '^[[1;5D' backward-word
-bindkey '^[[5~' beginning-of-buffer-or-history
-bindkey '^[[6~' end-of-buffer-or-history
-bindkey '^[[H' beginning-of-line
-bindkey '^[[F' end-of-line
-bindkey '^[[Z' undo
-
-autoload -Uz compinit
-mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}" 2>/dev/null
-compinit -i -d "${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
-zstyle ':completion:*:*:*:*:*' menu select
-zstyle ':completion:*' auto-description 'specify: %d'
-zstyle ':completion:*' completer _expand _complete
-zstyle ':completion:*' format 'Completing %d'
-zstyle ':completion:*' group-name ''
-zstyle ':completion:*' list-colors ''
-zstyle ':completion:*' list-prompt %SAt\ %p:\ Hit\ TAB\ for\ more%s
-zstyle ':completion:*' matcher-list 'm:{a-zA-Z}={A-Za-z}'
-zstyle ':completion:*' rehash true
-zstyle ':completion:*' select-prompt %SScrolling\ active:\ current\ selection\ at\ %p%s
-zstyle ':completion:*' use-compctl false
-zstyle ':completion:*' verbose true
-zstyle ':completion:*:kill:*' command 'ps -u $USER -o pid,%cpu,tty,cputime,cmd'
-
-HISTFILE="$HOME/.zsh_history"
-HISTSIZE=1000
-SAVEHIST=2000
-setopt hist_expire_dups_first hist_ignore_dups hist_ignore_space hist_verify
-alias history='history 0'
-TIMEFMT=$'\nreal\t%E\nuser\t%U\nsys\t%S\ncpu\t%P'
-
-if [[ -z "${debian_chroot:-}" && -r /etc/debian_chroot ]]; then debian_chroot="$(cat /etc/debian_chroot)"; fi
-case "$TERM" in xterm-color|*-256color) color_prompt=yes;; esac
-if [[ -x /usr/bin/tput ]] && tput setaf 1 >&/dev/null; then color_prompt=yes; else color_prompt=; fi
-
-configure_prompt() {
-  local prompt_symbol='㉿'
-  case "$PROMPT_ALTERNATIVE" in
-    twoline) PROMPT=$'%F{%(#.blue.green)}┌──${debian_chroot:+($debian_chroot─)}${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV)─)}(%B%F{%(#.red.blue)}%n'$prompt_symbol$'%m%b%F{%(#.blue.green)})-[%B%F{reset}%(6~.%-1~/…/%4~.%5~)%b%F{%(#.blue.green)}]\n└─%B%(#.%F{red}#.%F{blue}$)%b%F{reset} ';;
-    oneline) PROMPT=$'${debian_chroot:+($debian_chroot)}${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}%B%F{%(#.red.blue)}%n@%m%b%F{reset}:%B%F{%(#.blue.green)}%~%b%F{reset}%(#.#.$) '; RPROMPT=;;
-    backtrack) PROMPT=$'${debian_chroot:+($debian_chroot)}${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}%B%F{red}%n@%m%b%F{reset}:%B%F{blue}%~%b%F{reset}%(#.#.$) '; RPROMPT=;;
-  esac
-}
-PROMPT_ALTERNATIVE=twoline
-NEWLINE_BEFORE_PROMPT=yes
-VIRTUAL_ENV_DISABLE_PROMPT=1
-configure_prompt
-toggle_oneline_prompt() { [[ "$PROMPT_ALTERNATIVE" == oneline ]] && PROMPT_ALTERNATIVE=twoline || PROMPT_ALTERNATIVE=oneline; configure_prompt; zle reset-prompt; }
-zle -N toggle_oneline_prompt
-bindkey ^P toggle_oneline_prompt
-case "$TERM" in xterm*|rxvt*|Eterm|aterm|kterm|gnome*|alacritty) TERM_TITLE=$'\e]0;${debian_chroot:+($debian_chroot)}${VIRTUAL_ENV:+($(basename $VIRTUAL_ENV))}%n@%m: %~\a';; esac
-precmd() { print -Pnr -- "$TERM_TITLE"; if [[ "$NEWLINE_BEFORE_PROMPT" == yes ]]; then [[ -n "${_NEW_LINE_BEFORE_PROMPT:-}" ]] && print ""; _NEW_LINE_BEFORE_PROMPT=1; fi; }
-
-if [[ -x /usr/bin/dircolors ]]; then
-  [[ -r ~/.dircolors ]] && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
-  export LS_COLORS="$LS_COLORS:ow=30;44:"
-  alias ls='ls --color=auto' grep='grep --color=auto' fgrep='fgrep --color=auto' egrep='egrep --color=auto' diff='diff --color=auto' ip='ip --color=auto'
-  export LESS_TERMCAP_mb=$'\E[1;31m' LESS_TERMCAP_md=$'\E[1;36m' LESS_TERMCAP_me=$'\E[0m' LESS_TERMCAP_so=$'\E[01;33m' LESS_TERMCAP_se=$'\E[0m' LESS_TERMCAP_us=$'\E[1;32m' LESS_TERMCAP_ue=$'\E[0m' MANROFFOPT='-c'
-  zstyle ':completion:*' list-colors "${(s.:.)LS_COLORS}"
-fi
-if [[ -f /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]]; then source /usr/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh; ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern); ZSH_HIGHLIGHT_STYLES[unknown-token]=underline; ZSH_HIGHLIGHT_STYLES[reserved-word]=fg=cyan,bold; ZSH_HIGHLIGHT_STYLES[arg0]=fg=cyan; ZSH_HIGHLIGHT_STYLES[bracket-error]=fg=red,bold; fi
-if [[ -f /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh ]]; then source /usr/share/zsh-autosuggestions/zsh-autosuggestions.zsh; ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=244'; fi
-[[ -f /etc/zsh_command_not_found ]] && source /etc/zsh_command_not_found
-# <<< startup shell features <<<
-EOF
 }
 
 install_shell_loader() {
@@ -473,18 +398,31 @@ install_shell_loader() {
 }
 
 install_shell_configuration() {
-  local config_home="$TARGET_HOME/.config" shared_file="$TARGET_HOME/.config/startup/shell-common.sh" temp
-  temp="$SETUP_RUNTIME_DIR/shell-common.$$"
-  shell_shared_features_content >"$temp" || return 1
-  run_as_root install -d -o "$TARGET_USER" -g "$TARGET_GROUP" -m 755 "$config_home/startup" || return 1
-  if [[ ! -f "$shared_file" ]] || ! cmp -s "$temp" "$shared_file"; then
-    run_as_root install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 644 "$temp" "$shared_file" || { rm -f -- "$temp"; return 1; }
-    _setup_log_write INFO "Installed shared shell features: $shared_file"
+  local tree="$SCRIPT_DIR/sway/.config/startup"
+  local config_home="$TARGET_HOME/.config"
+  local shared_file="$config_home/startup/shell-common.sh"
+  local temp
+  if [[ -d "$tree" ]]; then
+    # Deploy the managed shell tree (env, aliases, terminal gate + prompt,
+    # inputrc) through the same backup/validate/replace path as every other
+    # managed tree, then install the loader pointers into .bashrc and .zshrc.
+    copy_tree_with_backup "$tree" "$TARGET_HOME/.config/startup" "Startup shell configuration" 0 || return 1
+  else
+    # Legacy fallback for checkouts without the managed shell tree: install
+    # the aliases-only features file only when no shared file exists yet, so
+    # an existing deployment is never downgraded to aliases-only.
+    if [[ ! -f "$shared_file" ]]; then
+      temp="$SETUP_RUNTIME_DIR/shell-common.$$"
+      shell_shared_features_content >"$temp" || return 1
+      run_as_root install -d -o "$TARGET_USER" -g "$TARGET_GROUP" -m 755 "$config_home/startup" || return 1
+      run_as_root install -o "$TARGET_USER" -g "$TARGET_GROUP" -m 644 "$temp" "$shared_file" || { rm -f -- "$temp"; return 1; }
+      _setup_log_write INFO "Installed legacy shared shell features: $shared_file"
+      rm -f -- "$temp"
+    fi
   fi
-  rm -f -- "$temp"
   install_shell_loader "$TARGET_HOME/.bashrc" bash || return 1
   install_shell_loader "$TARGET_HOME/.zshrc" zsh || return 1
-  ok 'Aliases added to .bashrc and .zshrc; no shell settings were changed'
+  ok 'Managed Bash and Zsh configuration installed (loaders in .bashrc and .zshrc)'
 }
 
 run_config_files() {
@@ -520,6 +458,6 @@ run_config_files() {
     fix_tree_permissions "$target" 644 || warn "Could not fix permissions under $target"
   done
   verify_i3blocks_runtime || failed=1
-  install_shell_configuration || warn 'Could not add aliases to .bashrc and .zshrc.'
+  install_shell_configuration || warn 'Could not install shell configuration in .bashrc and .zshrc.'
   (( failed == 0 ))
 }
