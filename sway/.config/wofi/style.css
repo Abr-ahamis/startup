@@ -1,25 +1,25 @@
 * {
     font-family: "JetBrainsMono Nerd Font", "JetBrains Mono", "DejaVu Sans", sans-serif;
-    font-size: 13px;
+    font-size: 11px;
 }
 
 window {
     margin: 0;
     padding: 0;
-    min-width: 640px;
-    min-height: 540px;
-    border: 1px solid #30363d;
-    border-radius: 16px;
-    background: rgba(14, 17, 23, 0.97);
-    color: #c9d1d9;
+    min-width: 420px;
+    min-height: 150px;
+    border: 1px solid #008ed1;
+    border-radius: 10px;
+    background: rgba(0, 78, 117, 0.80);
+    color: #e6f7ff;
     box-shadow:
-        0 20px 60px rgba(0, 0, 0, 0.60),
-        0 0 0 1px rgba(0, 217, 255, 0.03);
+        0 12px 32px rgba(0, 0, 0, 0.55),
+        0 0 18px rgba(0, 174, 255, 0.55);
 }
 
 #outer-box {
     margin: 0;
-    padding: 10px;
+    padding: 7px;
     background: transparent;
 }
 
@@ -37,12 +37,12 @@ window {
 
 #input {
     margin: 2px 2px 10px;
-    padding: 11px 14px;
-    border: 1px solid #30363d;
-    border-radius: 10px;
-    background: #161b22;
-    color: #c9d1d9;
-    caret-color: #00d9ff;
+    padding: 7px 10px;
+    border: 1px solid rgba(110, 211, 255, 0.55);
+    border-radius: 7px;
+    background: rgba(0, 45, 70, 0.72);
+    color: #e6f7ff;
+    caret-color: #72d7ff;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 }
 
@@ -55,28 +55,28 @@ window {
 }
 
 #entry {
-    margin: 3px 2px;
-    padding: 9px 11px;
+    margin: 2px;
+    padding: 6px 8px;
     border: 1px solid transparent;
-    border-radius: 9px;
+    border-radius: 6px;
     background: transparent;
-    color: #c9d1d9;
+    color: #d7f1ff;
 }
 
 #entry:hover {
-    border-color: #30363d;
-    background: #161b22;
+    border-color: #36bfff;
+    background: rgba(0, 105, 153, 0.55);
     color: #ffffff;
 }
 
 #entry:selected {
-    border: 1px solid #00b8d9;
-    border-radius: 9px;
-    background: #102631;
+    border: 1px solid #72d7ff;
+    border-radius: 6px;
+    background: rgba(0, 126, 183, 0.72);
     color: #ffffff;
     box-shadow:
         inset 3px 0 0 #00d9ff,
-        0 0 18px rgba(0, 217, 255, 0.06);
+        0 0 14px rgba(0, 196, 255, 0.35);
 }
 
 #entry:selected #text {
@@ -86,7 +86,7 @@ window {
 
 #text {
     padding-left: 4px;
-    color: #c9d1d9;
+    color: #d7f1ff;
 }
 
 #img {

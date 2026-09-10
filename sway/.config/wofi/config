@@ -1,8 +1,8 @@
 show=dmenu
 location=center
-width=640
-height=540
-matching=prefix
+width=75%
+height=20%
+matching=fuzzy
 sort_order=alphabetical
 insensitive=true
 allow_images=true
@@ -14,4 +14,4 @@ normal_window=false
 layer=top
 image_size=26
 term=foot
-prompt=󰍉
+prompt=󰍉  Applications
