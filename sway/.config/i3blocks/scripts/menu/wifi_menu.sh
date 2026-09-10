@@ -21,6 +21,38 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
+parse_wifi_row() {
+  local row="$1" field
+  local -a fields=()
+  IFS=: read -r -a fields <<< "$row"
+  (( ${#fields[@]} >= 3 )) || return 1
+
+  WIFI_SECURITY="${fields[${#fields[@]}-1]}"
+  WIFI_SIGNAL="${fields[${#fields[@]}-2]}"
+  WIFI_SSID="${fields[0]}"
+  for field in "${fields[@]:1:${#fields[@]}-3}"; do
+    WIFI_SSID+=":$field"
+  done
+  [[ -n "$WIFI_SSID" && "$WIFI_SIGNAL" =~ ^[0-9]+$ ]]
+}
+
+connection_profile_for_ssid() {
+  local row name type field
+  while IFS= read -r row; do
+    local -a fields=()
+    IFS=: read -r -a fields <<< "$row"
+    (( ${#fields[@]} >= 2 )) || continue
+    type="${fields[${#fields[@]}-1]}"
+    [[ "$type" == wifi ]] || continue
+    name="${fields[0]}"
+    for field in "${fields[@]:1:${#fields[@]}-2}"; do
+      name+=":$field"
+    done
+    [[ "$name" == "$1" ]] && { printf '%s\n' "$name"; return 0; }
+  done < <(nmcli -t --escape no -f NAME,TYPE connection show 2>/dev/null || true)
+  return 1
+}
+
 # ─────────────────────────────────────────────
 # KILL OLD INSTANCE (IMPORTANT FIX)
 # ─────────────────────────────────────────────
@@ -88,12 +120,10 @@ while true; do
   # SCAN NETWORKS
   # ─────────────────────────────────────────────
   echo -e "${C_DIM}[*] Scanning WiFi networks...${C_RESET}"
-  nmcli dev wifi rescan >/dev/null 2>&1 || true
-  sleep 2
-
   mapfile -t NETS < <(
-    nmcli -t -f SSID,SIGNAL,SECURITY dev wifi list |
-    awk -F: 'NF>=2 && $1!=""'
+    nmcli -t --escape no -f SSID,SIGNAL,SECURITY dev wifi list --rescan yes |
+    awk -F: 'NF>=3 && $1!="" && $2 ~ /^[0-9]+$/ {print}' |
+    awk '!seen[$0]++'
   )
 
   echo ""
@@ -101,7 +131,10 @@ while true; do
   echo -e "${C_LINE}------------------------------------${C_RESET}"
 
   for i in "${!NETS[@]}"; do
-    IFS=: read -r SSID SIGNAL SEC <<< "${NETS[$i]}"
+    parse_wifi_row "${NETS[$i]}" || continue
+    SSID="$WIFI_SSID"
+    SIGNAL="$WIFI_SIGNAL"
+    SEC="$WIFI_SECURITY"
     [[ -z "${SEC:-}" ]] && SEC="OPEN"
 
     printf "%b%2d)%b %s %b(%s%%)%b %b[%s]%b\n" \
@@ -149,19 +182,27 @@ while true; do
   # ─────────────────────────────────────────────
   # CONNECT
   # ─────────────────────────────────────────────
-  KNOWN="$(nmcli -t -f NAME,TYPE connection show | awk -F: '$2=="wifi"{print $1}' | grep -Fx "$SSID" || true)"
+  KNOWN="$(connection_profile_for_ssid "$SSID" || true)"
 
   if [[ -n "$KNOWN" ]]; then
     echo -e "${C_OK}[+] Saved profile${C_RESET}"
-    nmcli dev wifi connect "$SSID" ifname "$IFACE"
+    if nmcli --wait 30 dev wifi connect "$SSID" ifname "$IFACE"; then
+      CONNECTED=1
+    else
+      CONNECTED=0
+    fi
   else
     echo -e "${C_WARN}[!] Password required${C_RESET}"
     read -rsp "Password: " PASS
     echo ""
-    nmcli dev wifi connect "$SSID" ifname "$IFACE" password "$PASS"
+    if nmcli --wait 30 dev wifi connect "$SSID" ifname "$IFACE" password "$PASS"; then
+      CONNECTED=1
+    else
+      CONNECTED=0
+    fi
   fi
 
-  if [[ $? -eq 0 ]]; then
+  if (( CONNECTED == 1 )); then
     echo -e "${C_OK}[+] CONNECTION SUCCESS${C_RESET}"
   else
     echo -e "${C_ERROR}[-] CONNECTION FAILED${C_RESET}"

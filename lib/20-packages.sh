@@ -48,6 +48,19 @@ package_verify() {
 }
 package_available() { case "$PKG_MANAGER" in apt) apt-cache show "$1" >/dev/null 2>&1;; pacman) pacman -Si "$1" >/dev/null 2>&1;; esac; }
 package_done() { local version; version="$(package_get_version "$1")"; ok_indented "verified: $1${version:+ ($version)}"; }
+package_name_valid() { [[ "$1" =~ ^[[:alnum:]][[:alnum:]+.-]*$ ]]; }
+package_name_approved() {
+  local package="$1" feature candidate
+  case "$package" in
+    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|jq|sudo) return 0;;
+  esac
+  for feature in core network secret portal audio clipboard bluetooth python notify; do
+    for candidate in $(package_for "$feature"); do
+      [[ "$package" == "$candidate" ]] && return 0
+    done
+  done
+  return 1
+}
 run_package_command() { local label="$1"; shift; local pid rc; _setup_log_write COMMAND "$label: $(printf '%q ' "$@")"; "$@" >>"$SETUP_LOG_FILE" 2>&1 & pid=$!; SETUP_ACTIVE_PID="$pid"; printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"; wait "$pid"; rc=$?; SETUP_ACTIVE_PID=''; rm -f -- "$SETUP_ACTIVE_PID_FILE"; _setup_log_write COMMAND "$label: exit=$rc"; return "$rc"; }
 repair_apt() { info 'Repairing interrupted APT/dpkg state before one retry.'; run_package_command 'dpkg configure' run_as_root timeout --foreground 5m dpkg --configure -a && run_package_command 'apt dependency repair' run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 10m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -f install -y; }
 refresh_package_metadata() {
@@ -59,16 +72,38 @@ package_install_batch() {
   local package
   (( $# )) || return 0
   for package in "$@"; do
-    printf '  %s[~~]%s installing: %s\n' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "$package"
-    _setup_log_write INSTALL "package=$package requested-manager=$PKG_MANAGER"
+    if ! package_name_valid "$package" || ! package_name_approved "$package"; then
+      required_failure "Refusing unapproved package name: $package"
+      return 1
+    fi
   done
-  case "$PKG_MANAGER" in
-    apt) run_package_command 'apt batch install' run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 30m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$@";;
-    pacman) run_package_command 'pacman batch install' run_as_root timeout --foreground 30m pacman -S --needed --noconfirm "$@";;
-    *) return 1;;
-  esac
+  for package in "$@"; do
+    printf '%s[ ~~ ]%s %s: installing ...\n' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "$package"
+    _setup_log_write INSTALL "package=$package requested-manager=$PKG_MANAGER"
+    case "$PKG_MANAGER" in
+      apt) run_package_command "apt install $package" run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 30m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package";;
+      pacman) run_package_command "pacman install $package" run_as_root timeout --foreground 30m pacman -S --needed --noconfirm "$package";;
+      *) return 1;;
+    esac || return 1
+    printf '%s[ OK ]%s %s: installed\n' "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$package"
+    _setup_log_write OK "package=$package installed"
+  done
 }
-install_packages() { local p; local -A seen=(); local -a todo=(); for p in "$@"; do [[ -n "$p" && -z "${seen[$p]:-}" ]] || continue; seen[$p]=1; package_verify "$p" || todo+=("$p"); done; (( ${#todo[@]} == 0 )) || package_install_batch "${todo[@]}"; }
+install_packages() {
+  local p
+  local -A seen=()
+  local -a todo=()
+  for p in "$@"; do
+    if ! package_name_valid "$p" || ! package_name_approved "$p"; then
+      required_failure "Refusing unapproved package name: $p"
+      return 1
+    fi
+    [[ -z "${seen[$p]:-}" ]] || continue
+    seen[$p]=1
+    package_verify "$p" || todo+=("$p")
+  done
+  (( ${#todo[@]} == 0 )) || package_install_batch "${todo[@]}"
+}
 install_package() { install_packages "$1"; }
 remove_packages() { (( $# )) || return 0; case "$PKG_MANAGER" in apt) run_package_command 'apt batch remove' run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 20m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" remove -y "$@";; pacman) run_package_command 'pacman batch remove' run_as_root timeout --foreground 20m pacman -Rns --noconfirm "$@";; esac; }
 collect_required_packages() { local feature pkg list; local -A seen=(); REQUIRED_PACKAGES=(); for feature in core network secret portal audio clipboard bluetooth python notify; do list="$(package_for "$feature")" || { required_failure "No package mapping for required feature: $feature"; continue; }; for pkg in $list; do [[ -n "${seen[$pkg]:-}" ]] && continue; seen[$pkg]=1; REQUIRED_PACKAGES+=("$pkg"); done; done; }
@@ -78,7 +113,7 @@ run_packages() {
   local pkg; cleanup_previous_package_process; run_as_root install -d -m 700 "$SETUP_BACKUP_DIR" || { required_failure "Cannot create backup directory: $SETUP_BACKUP_DIR"; return 1; }; backup_package_selections; refresh_package_metadata || { required_failure 'APT metadata refresh failed; package availability cannot be trusted'; return 1; }; collect_required_packages; MISSING_PACKAGES=() INVALID_PACKAGES=() FAILED_REQUIRED_PACKAGES=()
   for pkg in "${REQUIRED_PACKAGES[@]}"; do if package_verify "$pkg"; then package_done "$pkg"; elif package_available "$pkg"; then MISSING_PACKAGES+=("$pkg"); [[ "$PACKAGE_VERIFY_REASON" != 'package database does not report installed' ]] && INVALID_PACKAGES+=("$pkg"); else FAILED_REQUIRED_PACKAGES+=("$pkg"); required_failure "Required package unavailable in configured repositories: $pkg"; fi; done
   if (( ${#MISSING_PACKAGES[@]} )); then
-    info "Installing ${#MISSING_PACKAGES[@]} missing/invalid package(s) in one $PKG_MANAGER transaction."
+    info "Installing ${#MISSING_PACKAGES[@]} missing/invalid package(s) sequentially with $PKG_MANAGER."
     if ! package_install_batch "${MISSING_PACKAGES[@]}" && [[ "$PKG_MANAGER" == apt ]]; then
       if repair_apt; then package_install_batch "${MISSING_PACKAGES[@]}" || _setup_log_write ERROR 'APT retry failed'; else _setup_log_write ERROR 'APT repair failed'; fi
     fi

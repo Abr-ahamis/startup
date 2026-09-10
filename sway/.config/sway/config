@@ -11,7 +11,7 @@ set $bar-font-size 7
 set $launcher ~/.config/sway/scripts/launch-app.sh
 set $term $launcher terminal
 set $term2 $launcher terminal-secondary
-set $menu wofi --show drun
+set $menu ~/.config/sway/scripts/app-menu.sh
 set $filemanager $launcher filemanager
 set $browser $launcher browser
 set $browser2 $launcher browser-secondary
