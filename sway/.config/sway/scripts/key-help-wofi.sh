@@ -8,8 +8,8 @@ MARGIN_BOTTOM=20
 MARGIN_LEFT=20
 
 # Fallback window size if Sway cannot report the focused monitor size.
-WINDOW_WIDTH=880
-WINDOW_HEIGHT=860
+WINDOW_WIDTH=650
+WINDOW_HEIGHT=500
 
 # Auto layout settings.
 COLUMNS=3         # 0 = auto. Set 1, 2, 3, etc. to force columns.
@@ -124,11 +124,9 @@ if command -v swaymsg >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
   fi
 fi
 
-# Work out the usable screen area.
-WIDTH=$((output_width - MARGIN_LEFT - MARGIN_RIGHT))
-HEIGHT_LIMIT=$((output_height - MARGIN_TOP - MARGIN_BOTTOM))
-((WIDTH < 320)) && WIDTH="$output_width"
-((HEIGHT_LIMIT < 240)) && HEIGHT_LIMIT="$output_height"
+# Keep the key-help window consistent across monitors.
+WIDTH="$WINDOW_WIDTH"
+HEIGHT_LIMIT="$WINDOW_HEIGHT"
 
 entry_count="${#entries[@]}"
 
@@ -156,8 +154,7 @@ fi
 
 # Compute window height from the number of rows.
 LINES=$(((entry_count + COLUMNS - 1) / COLUMNS))
-HEIGHT=$((LINES * ROW_HEIGHT + WINDOW_PAD_Y))
-((HEIGHT > HEIGHT_LIMIT)) && HEIGHT="$HEIGHT_LIMIT"
+HEIGHT="$WINDOW_HEIGHT"
 
 XOFFSET="$MARGIN_LEFT"
 YOFFSET="$MARGIN_TOP"
@@ -216,7 +213,6 @@ shortcuts() {
 shortcuts | wofi \
   --dmenu \
   --allow-markup \
-  --hide-search \
   --insensitive \
   --prompt "Sway Shortcuts" \
   --style "$STYLE" \
