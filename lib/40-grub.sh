@@ -64,6 +64,22 @@ grub_regenerate() {
   # identical content. Successful generator exit plus a nonempty cfg is proof.
   _setup_log_write VERIFY "subject=grub.cfg result=OK before=$before after=$(stat -c '%Y:%s' "$after" 2>/dev/null || true)"
 }
+# GRUB's generated configuration refers to files under /boot relative to its
+# runtime root. Thus GRUB_THEME=/boot/grub/themes/startup/theme.txt is emitted
+# as `set theme=($root)/grub/themes/startup/theme.txt` on Ubuntu. Treat only
+# that exact root-relative rendering (or the literal configured path) as a
+# match; this retains verification while accepting GRUB's normal syntax.
+grub_cfg_theme_matches() {
+  local theme="$1" line="$2" root_relative value
+  value="${line#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value#\"}"; value="${value%\"}"
+  [[ "$value" == "$theme" ]] && return 0
+  [[ "$theme" == /boot/* ]] || return 1
+  root_relative="${theme#/boot}"
+  [[ "$value" == '($root)'"$root_relative" ]]
+}
 # Restore theme, defaults, and grub.cfg from the run's backups. Every step runs
 # with elevated privileges: the backup directory is created root-only (0700) and
 # an unprivileged existence check would silently skip every restore.
@@ -139,7 +155,7 @@ run_grub() {
   # log the actual embedded line for future diagnosis.
   local theme_line
   theme_line="$(run_as_root sh -c 'grep -E "set theme=" "$1" 2>/dev/null | tail -n1' sh /boot/grub/grub.cfg)" || true
-  if [[ "$theme_line" != *"$GRUB_THEME_PATH"* ]]; then
+  if ! grub_cfg_theme_matches "$GRUB_THEME_PATH" "$theme_line"; then
     _setup_log_write WARN "expected GRUB_THEME_PATH=$GRUB_THEME_PATH; embedded theme line: ${theme_line:-<none>}"
     grub_rollback_theme "$(dirname -- "$GRUB_THEME_PATH")"
     required_failure 'GRUB verification failed; expected theme reference was not found in grub.cfg; previous theme, defaults, and grub.cfg were restored when available'; return 1

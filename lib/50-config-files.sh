@@ -174,7 +174,7 @@ copy_tree_with_backup() {
   [[ "$announce" == "0" ]] || ok "$label installed"
 }
 
-# Legacy fallback used only when the managed sway/.config/startup tree is
+# Legacy fallback used only when the managed sway/config/startup tree is
 # absent from the project checkout: aliases only, no prompt or shell
 # settings. Normal installs deploy the full tree instead (see
 # install_shell_configuration below).
@@ -429,7 +429,7 @@ install_shell_loader() {
 }
 
 install_shell_configuration() {
-  local tree="$SCRIPT_DIR/sway/.config/startup"
+  local tree="$SCRIPT_DIR/sway/config/startup"
   local config_home="$TARGET_HOME/.config"
   local shared_file="$config_home/startup/shell-common.sh"
   local temp
@@ -466,15 +466,15 @@ run_config_files() {
   fix_project_script_permissions "$SCRIPT_DIR"
 
   local failed=0 target
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/foot" "$TARGET_HOME/.config/foot" "Foot configuration" 0 || failed=1
+  copy_tree_with_backup "$SCRIPT_DIR/sway/config/foot" "$TARGET_HOME/.config/foot" "Foot configuration" 0 || failed=1
   if [[ -f "$TARGET_HOME/.config/foot/foot.ini" && "${DISTRO_ID:-}" != kali ]]; then
     run_as_root sed -i 's/^\[colors-dark\]$/[colors]/' "$TARGET_HOME/.config/foot/foot.ini" || warn "Could not select the Debian Foot color section"
   fi
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/i3blocks" "$TARGET_HOME/.config/i3blocks" "i3blocks configuration" 0 || failed=1
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/sway" "$TARGET_HOME/.config/sway" "Sway configuration" 0 || failed=1
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/flameshot" "$TARGET_HOME/.config/flameshot" "Flameshot configuration" 0 || failed=1
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/wofi" "$TARGET_HOME/.config/wofi" "Wofi configuration" 0 || failed=1
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/systemd" "$TARGET_HOME/.config/systemd" "User systemd units" 0 || failed=1
+  copy_tree_with_backup "$SCRIPT_DIR/sway/config/i3blocks" "$TARGET_HOME/.config/i3blocks" "i3blocks configuration" 0 || failed=1
+  copy_tree_with_backup "$SCRIPT_DIR/sway/config/sway" "$TARGET_HOME/.config/sway" "Sway configuration" 0 || failed=1
+  copy_tree_with_backup "$SCRIPT_DIR/sway/config/flameshot" "$TARGET_HOME/.config/flameshot" "Flameshot configuration" 0 || failed=1
+  copy_tree_with_backup "$SCRIPT_DIR/sway/config/wofi" "$TARGET_HOME/.config/wofi" "Wofi configuration" 0 || failed=1
+  copy_tree_with_backup "$SCRIPT_DIR/sway/config/systemd" "$TARGET_HOME/.config/systemd" "User systemd units" 0 || failed=1
   (( failed == 0 )) && ok_indented 'Copied .config files' || warn "Some .config resources were not copied; existing files were preserved."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/bin" "$TARGET_HOME/.local/bin" "User commands" 0 || failed=1
   (( failed == 0 )) && ok_indented 'Copied .local/bin files' || warn "Some user commands were not copied."

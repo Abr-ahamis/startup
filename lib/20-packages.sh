@@ -25,7 +25,10 @@ package_expected_command() {
   case "$1" in
     sway|swaybg|swayidle|swaylock|i3blocks|wofi|foot|dex|gammastep|flameshot|grim|slurp|pipewire|pipewire-pulse|wireplumber|pamixer|cliphist|rfkill|brightnessctl|dunst|jq|curl|timeshift|seahorse|age|cryptsetup|git|python3|pkg-config) printf '%s\n' "$1" ;;
     wl-clipboard) echo wl-copy;; network-manager|networkmanager) echo nmcli;; network-manager-gnome|network-manager-applet) echo nm-applet;;
-    bluez) printf '%s\n' /usr/lib/bluetooth/bluetoothd;; bluez-utils) echo bluetoothctl;; blueman) echo blueman-manager;; libnotify-bin|libnotify) echo notify-send;; fontconfig) echo fc-cache;;
+    # bluetoothd moved from /usr/lib/bluetooth to /usr/libexec/bluetooth on
+    # Ubuntu 24.04. Verify the daemon through its supported command name so
+    # this remains valid across both layouts.
+    bluez) printf '%s\n' bluetoothd;; bluez-utils) echo bluetoothctl;; blueman) echo blueman-manager;; libnotify-bin|libnotify) echo notify-send;; fontconfig) echo fc-cache;;
     gnome-keyring) echo gnome-keyring-daemon;; grub-customizer) echo grub-customizer;; libsecret-tools) echo secret-tool;; gnupg) echo gpg;; apparmor) echo aa-status;; bubblewrap) echo bwrap;;
   esac
 }
