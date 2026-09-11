@@ -171,9 +171,6 @@ launch_final_sway() {
 
 # ---------- Orchestration ----------
 run_report() {
-  # Preserve the existing single automatic Sway reload before the preview.
-  reload_target_sway || true
-
   if (( SETUP_RELOGIN_REQUIRED )); then
     info "Log out and back in to apply the group membership changed during this run."
   fi
@@ -181,6 +178,8 @@ run_report() {
   # The preview is the final interactive action. The existing completion and
   # summary output is printed only after the preview Sway instance exits.
   launch_sway_preview
+  info 'Reloading the active Sway session after the preview closes.'
+  reload_target_sway || true
   printf '%s========================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
   if (( ${#SETUP_REQUIRED_FAILURES[@]} )); then
     error "Setup did not complete successfully: ${#SETUP_REQUIRED_FAILURES[@]} required verification failure(s)"

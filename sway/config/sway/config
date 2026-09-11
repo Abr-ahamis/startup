@@ -11,7 +11,6 @@ set $bar-font-size 7
 set $launcher ~/.config/sway/scripts/launch-app.sh
 set $term $launcher terminal
 set $term2 $launcher terminal-secondary
-set $menu ~/.config/sway/scripts/app-menu.sh
 set $filemanager $launcher filemanager
 set $browser $launcher browser
 set $browser2 $launcher browser-secondary
@@ -67,6 +66,7 @@ client.urgent            $urgent-bg-color   $urgent-bg-color   $text-color      
 
 
 for_window [app_id="wofi"] floating enable
+for_window [app_id="wofi"] move position center
 for_window [app_id="wofi"] border pixel 1
 for_window [app_id="wofi"] sticky enable
 
@@ -77,9 +77,9 @@ for_window [app_id="wofi"] sticky enable
 # Applications and launchers
 bindsym $mod+Return exec $term
 bindsym $mod+Alt+Return exec $term2
-bindsym $mod+space exec $menu
-bindsym $mod+Alt+space exec $menu
-bindsym $mod+d exec $menu
+bindsym $mod+space exec wofi --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
+bindsym $mod+Alt+space exec wofi --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
+bindsym $mod+d exec wofi --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
 bindsym Shift+F1 exec ~/.config/sway/scripts/key-help-wofi.sh
 bindsym $mod+k exec ~/.config/sway/scripts/key-help-wofi.sh
 

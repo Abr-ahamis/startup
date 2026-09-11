@@ -64,7 +64,28 @@ package_name_approved() {
   done
   return 1
 }
-run_package_command() { local label="$1"; shift; local pid rc; _setup_log_write COMMAND "$label: $(printf '%q ' "$@")"; "$@" >>"$SETUP_LOG_FILE" 2>&1 & pid=$!; SETUP_ACTIVE_PID="$pid"; printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"; wait "$pid"; rc=$?; SETUP_ACTIVE_PID=''; rm -f -- "$SETUP_ACTIVE_PID_FILE"; _setup_log_write COMMAND "$label: exit=$rc"; return "$rc"; }
+run_package_command() {
+  local label="$1"; shift
+  local pid rc spin='|/-\\' spin_index=0
+  _setup_log_write COMMAND "$label: $(printf '%q ' "$@")"
+  "$@" >>"$SETUP_LOG_FILE" 2>&1 &
+  pid=$!
+  SETUP_ACTIVE_PID="$pid"
+  printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ -t 1 ]]; then
+      printf '\r%s[WORK]%s %s %s elapsed %s' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "${spin:spin_index++%4:1}" "$label" "$(elapsed_time)"
+    fi
+    sleep 0.2
+  done
+  wait "$pid"
+  rc=$?
+  SETUP_ACTIVE_PID=''
+  rm -f -- "$SETUP_ACTIVE_PID_FILE"
+  [[ -t 1 ]] && printf '\r\033[2K'
+  _setup_log_write COMMAND "$label: exit=$rc"
+  return "$rc"
+}
 repair_apt() { info 'Repairing interrupted APT/dpkg state before one retry.'; run_package_command 'dpkg configure' run_as_root timeout --foreground 5m dpkg --configure -a && run_package_command 'apt dependency repair' run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 10m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -f install -y; }
 refresh_package_metadata() {
   # APT metadata is refreshed once before availability decisions.  Pacman is
