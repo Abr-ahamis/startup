@@ -1,0 +1,7 @@
+services:
+  ubuntu-box:
+    build: .
+    container_name: Ubuntu
+    stdin_open: true
+    tty: true
+    restart: unless-stopped

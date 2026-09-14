@@ -1,0 +1,7 @@
+services:
+  debian-box:
+    build: .
+    container_name: Debian
+    stdin_open: true 
+    tty: true        
+    restart: unless-stopped
