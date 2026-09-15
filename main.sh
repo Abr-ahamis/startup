@@ -38,6 +38,7 @@ fi
 run_distro || exit 1
 run_packages || required_failure 'Package stage failed; later stages may be incomplete.'
 run_config_files || required_failure 'Configuration deployment stage failed.'
+copy_docker_folder_to_work || warn 'Docker folder copy failed.'
 run_wallpapers || warn 'Wallpaper stage failed.'
 run_security || warn 'Security integration stage failed or was deferred.'
 run_services || warn 'Service/session stage failed or was deferred.'

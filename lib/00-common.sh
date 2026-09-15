@@ -383,6 +383,21 @@ target_session_available() {
   [[ -d "$runtime" && -S "$runtime/bus" ]]
 }
 
+copy_docker_folder_to_work() {
+  local source_dir="$SCRIPT_DIR/scr/Docker"
+  local work_dir="$TARGET_HOME/Work"
+  local destination_dir="$work_dir/Docker"
+
+  [[ -d "$source_dir" ]] || {
+    warn "Docker source folder not found: $source_dir"
+    return 1
+  }
+
+  run_as_target mkdir -p "$destination_dir" || return 1
+  run_as_target cp -a -- "$source_dir/." "$destination_dir/" || return 1
+  ok "Docker folder copied to $destination_dir"
+}
+
 target_wayland_display() {
   local runtime candidate
   runtime="$(target_runtime_dir)"

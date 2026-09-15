@@ -88,6 +88,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
+interrupt() {
+    ON_ERROR_ACTIVE='no'
+    warn "Interrupted. Cleaning up and exiting."
+    exit 130
+}
+trap interrupt INT TERM
+
 # -----------------------------------------------------------------------------
 # Basic helpers
 # -----------------------------------------------------------------------------
@@ -1180,4 +1187,6 @@ printf '\n%s\n' 'HackerAI return-link test from the host:'
 printf '  xdg-open "hackerai://test"\n'
 
 ON_ERROR_ACTIVE='no'
-exec distrobox enter "$CONTAINER_NAME"
+printf '\n%s\n' 'Setup finished successfully. The script is now exiting.'
+printf 'Enter the container later with: distrobox enter %q\n' "$CONTAINER_NAME"
+exit 0
