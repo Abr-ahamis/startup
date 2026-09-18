@@ -39,12 +39,12 @@ grub_find_theme_dirs() {
   done
 }
 grub_set_theme() {
-  local defaults=/etc/default/grub theme="$1" temp
+  local defaults=/etc/default/grub theme="$1" background="$2" temp
   [[ -e "$defaults" && ! -L "$defaults" ]] || run_as_root install -m 644 /dev/null "$defaults" || return 1
   temp="$(run_as_root mktemp /etc/default/.grub.startup.XXXXXX)" || return 1
   # The redirection must execute in the elevated process: a root-created
   # mktemp file is intentionally not writable by the invoking desktop user.
-  run_as_root sh -c 'awk -v value="$1" '\''BEGIN {done=0} /^[[:space:]]*GRUB_THEME=/ {if (!done) print value; done=1; next} {print} END {if (!done) print value}'\'' "$2" > "$3"' sh "GRUB_THEME=\"$theme\"" "$defaults" "$temp" || { run_as_root rm -f -- "$temp"; return 1; }
+  run_as_root sh -c 'awk -v theme="$1" -v background="$2" '\''BEGIN {theme_done=0; background_done=0} /^[[:space:]]*GRUB_THEME=/ {if (!theme_done) print theme; theme_done=1; next} /^[[:space:]]*GRUB_BACKGROUND=/ {if (!background_done) print background; background_done=1; next} {print} END {if (!theme_done) print theme; if (!background_done) print background}'\'' "$3" > "$4"' sh "GRUB_THEME=\"$theme\"" "GRUB_BACKGROUND=\"$background\"" "$defaults" "$temp" || { run_as_root rm -f -- "$temp"; return 1; }
   run_as_root chmod 644 "$temp" && run_as_root mv -f -- "$temp" "$defaults"
 }
 grub_verify_theme() {
@@ -70,7 +70,16 @@ grub_regenerate() {
 # that exact root-relative rendering (or the literal configured path) as a
 # match; this retains verification while accepting GRUB's normal syntax.
 grub_cfg_theme_matches() {
-  local theme="$1" line="$2" root_relative value
+  local theme="$1" line="$2" root_relative value background background_root_relative
+  if [[ "$line" == *'background_image '* ]]; then
+    value="${line#*background_image }"
+    value="${value%\;*}"
+    background="$(dirname -- "$theme")/grub-16x9.png"
+    background_root_relative="${background#/boot}"
+    value="${value#\"}"; value="${value%\"}"
+    [[ "$value" == "$background" || "$value" == '($root)'"$background_root_relative" ]]
+    return
+  fi
   value="${line#*=}"
   value="${value#"${value%%[![:space:]]*}"}"
   value="${value%"${value##*[![:space:]]}"}"
@@ -130,7 +139,7 @@ install_grub_theme() {
       return 1
     fi
   done
-  if ! grub_set_theme "$theme" || ! grub_verify_theme "$theme"; then
+  if ! grub_set_theme "$theme" "$(dirname -- "$theme")/grub-16x9.png" || ! grub_verify_theme "$theme"; then
     grub_rollback_all_themes
     required_failure "GRUB theme deployment failed; previous files were restored when available"
     return 1
@@ -151,10 +160,10 @@ run_grub() {
   fi
   # /boot/grub/grub.cfg is root-only (0600) on Debian/Kali, so it must be read
   # with elevated privileges. The generator emits the theme path literally or
-  # prefixed with ($root), possibly quoted; verify with a substring match and
-  # log the actual embedded line for future diagnosis.
+  # prefixed with ($root), possibly quoted. Debian-style generators may emit
+  # background_image instead of set theme, so verify either exact form.
   local theme_line
-  theme_line="$(run_as_root sh -c 'grep -E "set theme=" "$1" 2>/dev/null | tail -n1' sh /boot/grub/grub.cfg)" || true
+  theme_line="$(run_as_root sh -c 'grep -E "set theme=|background_image[[:space:]]" "$1" 2>/dev/null | tail -n1' sh /boot/grub/grub.cfg)" || true
   if ! grub_cfg_theme_matches "$GRUB_THEME_PATH" "$theme_line"; then
     _setup_log_write WARN "expected GRUB_THEME_PATH=$GRUB_THEME_PATH; embedded theme line: ${theme_line:-<none>}"
     grub_rollback_theme "$(dirname -- "$GRUB_THEME_PATH")"

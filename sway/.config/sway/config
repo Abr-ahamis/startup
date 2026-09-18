@@ -13,7 +13,6 @@ set $term $launcher terminal
 set $term2 $launcher terminal-secondary
 set $filemanager $launcher filemanager
 set $browser $launcher browser
-set $browser2 $launcher browser-secondary
 set $editor $launcher editor
 set $screenshot $launcher screenshot
 set $close_all ~/.config/sway/scripts/close-all-windows.sh
@@ -86,7 +85,6 @@ bindsym $mod+k exec ~/.config/sway/scripts/key-help-wofi.sh
 bindsym $mod+Escape exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
 bindsym $mod+Shift+Return exec $browser
 bindsym $mod+Shift+f exec $filemanager
-bindsym $mod+Shift+Alt+b exec $browser2
 bindsym $mod+Shift+t exec $launcher telegram
 bindsym $mod+Shift+n exec $editor
 bindsym Print exec $screenshot
