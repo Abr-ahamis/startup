@@ -5,7 +5,7 @@ source "$(dirname "$0")/colors.sh"
 # =========================
 # Config
 # =========================
-BLUE="#f38ba8"
+TEXT="#F5F5F7"
 
 # =========================
 # Actions
@@ -24,4 +24,4 @@ ICON_POWER=" ⏻ "
 # =========================
 # Output
 # =========================
-printf "<span color='%s'>%s</span>\n" "$CRITICAL" "$ICON_POWER"
+printf "<span color='%s'>%s</span>\n" "$TEXT" "$ICON_POWER"

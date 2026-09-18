@@ -30,4 +30,4 @@ ICON_CLIPBOARD=""
 # =========================
 # Output
 # =========================
-printf "<span color='%s'>| %s</span> \n" "$SECONDARY_TEXT" "$ICON_CLIPBOARD"
+printf "<span color='%s'>|</span> <span color='%s'>%s</span>\n" "$PRIMARY_TEXT" "$STABLE_ICON" "$ICON_CLIPBOARD"

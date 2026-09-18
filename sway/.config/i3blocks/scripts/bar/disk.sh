@@ -41,4 +41,4 @@ color="$(percentage_color "$used_pct")"
 # Output
 # =========================
 printf "<span color='%s'>| </span><span color='%s'>%s</span> <span color='%s'>%sG</span>\n" \
-  "$PRIMARY_TEXT" "$color" "$ICON_DISK" "$color" "$free_gb"
+  "$PRIMARY_TEXT" "$STABLE_ICON" "$ICON_DISK" "$PRIMARY_TEXT" "$free_gb"

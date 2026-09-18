@@ -65,4 +65,4 @@ color="$(percentage_color "$pct")"
 # Output
 # =========================
 printf "<span color='%s'>| </span><span color='%s'>%s</span> <span color='%s'>%s%%</span>\n" \
-  "$PRIMARY_TEXT" "$color" "$ICON_CPU" "$color" "$pct"
+  "$PRIMARY_TEXT" "$STABLE_ICON" "$ICON_CPU" "$PRIMARY_TEXT" "$pct"

@@ -6,7 +6,7 @@ source "$(dirname "$0")/colors.sh"
 # Config
 # =========================
 MUTED="#ffffff"
-TEXT="#ffffff"
+TEXT="$ACCENT"
 ICON_COLOR="#cba6f7"
 GREEN="#ffffff"
 YELLOW="#ffffff"
@@ -60,12 +60,14 @@ count="$(get_updates)"
 # =========================
 # Color logic
 # =========================
-color="$TEXT"
-
-color="$TEXT"
+if [ "$count" -eq 0 ]; then
+  color="$ACCENT"
+else
+  color="$ATTENTION"
+fi
 
 # =========================
 # Output
 # =========================
 printf "<span color='%s'>| </span><span color='%s'>%s</span> <span color='%s'>%s</span>\n" \
-  "$PRIMARY_TEXT" "$ATTENTION" "$ICON" "$PRIMARY_TEXT" "$count"
+  "$PRIMARY_TEXT" "$STABLE_ICON" "$ICON" "$PRIMARY_TEXT" "$count"

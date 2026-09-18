@@ -5,8 +5,8 @@ source "$(dirname "$0")/colors.sh"
 # =========================
 # Config
 # =========================
-TEXT="#ffffff"
-ICON_COLOR="#a6e3a1"
+TEXT="$PRIMARY_TEXT"
+ICON_COLOR="$ACCENT"
 GREEN="#ffffff"
 ORANGE="#ffffff"
 MUTED="#ffffff"
@@ -70,4 +70,4 @@ fi
 # =========================
 # Output
 # =========================
-printf "|<span color='%s'>%s</span> <span color='%s'>%s%%</span>|\n" "$color" "$icon" "$color" "$pct"
+printf "|<span color='%s'>%s</span> <span color='%s'>%s%%</span>|\n" "$color" "$icon" "$TEXT" "$pct"

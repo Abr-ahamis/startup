@@ -36,18 +36,13 @@ ICON_DOT="●"
 powered="$(timeout 2 bluetoothctl show 2>/dev/null | awk -F': ' '/Powered:/ {print $2; exit}')"
 
 if [ "$powered" != "yes" ]; then
-  dot_color="$DISABLED"
+  dot_color="$ACCENT"
 else
-  mac="$(timeout 2 bluetoothctl devices Connected 2>/dev/null | awk 'NR==1 {print $2}')"
-  if [ -n "$mac" ]; then
-    dot_color="$ACCENT"
-  else
-    dot_color="$DISABLED"
-  fi
+  dot_color="$ATTENTION"
 fi
 
 # =========================
 # Output
 # =========================
 printf "|<span color='%s'> %s </span><span color='%s'>%s</span> \n" \
-  "$dot_color" "$ICON_DOT" "$ACCENT" "$ICON_BLUETOOTH"
+  "$dot_color" "$ICON_DOT" "$PRIMARY_TEXT" "$ICON_BLUETOOTH"

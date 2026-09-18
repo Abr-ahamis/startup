@@ -23,5 +23,5 @@ ICON_TIME=""
 # =========================
 # Logic + Output
 # =========================
-printf "<span color='%s'>|</span> <span color='%s'>%s</span> %s\n" \
-  "$PRIMARY_TEXT" "$PRIMARY_TEXT" "$ICON_TIME" "$(date '+%I:%M')"
+printf "<span color='%s'>|</span> <span color='%s'>%s</span> <span color='%s'>%s</span>\n" \
+  "$PRIMARY_TEXT" "$STABLE_ICON" "$ICON_TIME" "$PRIMARY_TEXT" "$(date '+%I:%M')"

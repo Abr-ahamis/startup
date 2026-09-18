@@ -75,7 +75,8 @@ start_script "$home/.local/bin/opacity.sh"
 # do not launch a second copy from the session script.
 
 if command -v wl-paste >/dev/null 2>&1 && command -v cliphist >/dev/null 2>&1; then
-  pgrep -u "$uid" -f 'wl-paste.*cliphist store' >/dev/null 2>&1 || wl-paste --type text --watch cliphist store >/dev/null 2>&1 &
+  pkill -u "$uid" -f 'wl-paste.*cliphist store' >/dev/null 2>&1 || true
+  wl-paste --type text --watch cliphist -max-items 30 store >/dev/null 2>&1 &
 fi
 
 if command -v swaybg >/dev/null 2>&1; then

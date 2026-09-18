@@ -28,4 +28,4 @@ ICON_CALENDAR=""
 # Color only the icon with $MUTED; make surrounding text white ($TEXT).
 # Output layout: | <icon> <date>
 printf "<span color='%s'>|</span> <span color='%s'>%s</span> <span color='%s'>%s</span>\n" \
-  "$PRIMARY_TEXT" "$SECONDARY_TEXT" "$ICON_CALENDAR" "$SECONDARY_TEXT" "$(date '+%Y-%m(%b)-%d')"
+  "$PRIMARY_TEXT" "$STABLE_ICON" "$ICON_CALENDAR" "$PRIMARY_TEXT" "$(date '+%Y-%m(%b)-%d')"

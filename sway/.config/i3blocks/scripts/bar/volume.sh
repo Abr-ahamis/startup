@@ -73,4 +73,4 @@ fi
 # =========================
 # Output
 # =========================
-printf "<span color='%s'>| %s </span><span color='%s'>%s%%</span>\n" "$color" "$icon" "$color" "$vol"
+printf "<span color='%s'>| %s </span><span color='%s'>%s%%</span>\n" "$color" "$icon" "$PRIMARY_TEXT" "$vol"

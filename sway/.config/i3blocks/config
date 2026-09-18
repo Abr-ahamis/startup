@@ -1,6 +1,6 @@
 [global_config]
 markup=pango
-color=#ffffff
+color=#F5F5F7
 separator=false
 separator_block_width=0
 

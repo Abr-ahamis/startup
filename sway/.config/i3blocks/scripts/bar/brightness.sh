@@ -43,5 +43,5 @@ color="$(percentage_color "$pct")"
 # =========================
 # Output
 # =========================
-printf "|<span color='%s'> %s %s%%</span>\n" \
-  "$color" "$ICON_BRIGHTNESS" "$pct"
+printf "|<span color='%s'> %s</span> <span color='%s'>%s%%</span>\n" \
+  "$STABLE_ICON" "$ICON_BRIGHTNESS" "$PRIMARY_TEXT" "$pct"

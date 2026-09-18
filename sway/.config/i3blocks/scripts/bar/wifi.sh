@@ -50,4 +50,4 @@ fi
 # Output
 # =========================
 printf "| <span color='%s'>%s </span><span color='%s'>%s</span> \n" \
-  "$NETWORK" "$ICON_DOT" "$dot_color" "$label"
+  "$NETWORK" "$ICON_DOT" "$PRIMARY_TEXT" "$label"
