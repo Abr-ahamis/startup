@@ -2,24 +2,38 @@
 
 set -euo pipefail
 
-C_RESET="\033[0m"
-C_BOLD="\033[1m"
-C_DIM="\033[2m"
-C_HEADER="\033[38;5;39m"
-C_LINE="\033[38;5;59m"
-C_OK="\033[38;5;82m"
-C_WARN="\033[38;5;214m"
-C_ERROR="\033[38;5;203m"
-C_VALUE="\033[38;5;223m"
-C_LABEL="\033[38;5;245m"
+# Soft blue-black surface with cool gray text, lilac buttons, and warm orange
+# highlights. Bold accent edges give the terminal buttons a subtle glow.
+C_RESET=$'\033[0m\033[48;2;20;27;40m'
+C_BOLD=$'\033[1m'
+C_DIM=$'\033[2m'
+C_HEADER=$'\033[1;38;2;193;181;230m'
+C_LINE=$'\033[38;2;79;96;122m'
+C_OK=$'\033[38;2;172;190;205m'
+C_WARN=$'\033[1;38;2;235;169;112m'
+C_ERROR=$'\033[1;38;2;224;139;151m'
+C_VALUE=$'\033[38;2;224;228;237m'
+C_LABEL=$'\033[38;2;151;164;184m'
+C_BUTTON=$'\033[1;38;2;25;31;45;48;2;174;161;218m'
+C_GLOW=$'\033[1;38;2;246;190;132m'
+C_BG=$'\033[48;2;20;27;40m'
 
 PID_FILE="/tmp/wifi_menu.pid"
 
 cleanup() {
   rm -f "$PID_FILE"
+  printf '\033[0m'
 }
 trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
+
+paint_background() {
+  printf '%b\033[2J\033[H' "$C_BG"
+}
+
+draw_button() {
+  printf '%b‹%b  %s  %b%b›%b' "$C_GLOW" "$C_BUTTON" "$1" "$C_RESET" "$C_GLOW" "$C_RESET"
+}
 
 parse_wifi_row() {
   local row="$1" field
@@ -82,7 +96,7 @@ fi
 # MAIN LOOP
 # ─────────────────────────────────────────────
 while true; do
-  clear
+  paint_background
 
   WIFI_STATE="$(nmcli radio wifi || echo disabled)"
 
@@ -137,8 +151,9 @@ while true; do
     SEC="$WIFI_SECURITY"
     [[ -z "${SEC:-}" ]] && SEC="OPEN"
 
-    printf "%b%2d)%b %s %b(%s%%)%b %b[%s]%b\n" \
-      "$C_VALUE" "$((i+1))" "$C_RESET" "$SSID" \
+    draw_button "$((i+1))"
+    printf " %b%s%b %b(%s%%)%b %b[%s]%b\n" \
+      "$C_VALUE" "$SSID" "$C_RESET" \
       "$C_OK" "$SIGNAL" "$C_RESET" \
       "$C_DIM" "$SEC" "$C_RESET"
   done

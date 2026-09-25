@@ -12,6 +12,7 @@ selected=0
 step_brightness=5
 step_volume=5
 step_night_light=5
+step_transparency=5
 state_dir="${XDG_RUNTIME_DIR:-/tmp}"
 [[ -w "$state_dir" ]] || state_dir="/tmp"
 night_light_state_file="${state_dir}/vol-brigh-menu-night-light-${UID:-user}"
@@ -224,6 +225,21 @@ set_night_light_max() {
   apply_night_light 100
 }
 
+get_transparency() {
+  "$HOME/.local/bin/sway-opacity-control.sh" get 2>/dev/null || printf '0\n'
+}
+
+set_transparency() {
+  local value="$1" applied
+  applied="$("$HOME/.local/bin/sway-opacity-control.sh" set "$value" 2>&1)" || {
+    toast_msg="$applied"
+    toast_timer=8
+    return 1
+  }
+  toast_msg="App transparency ${value}%"
+  toast_timer=8
+}
+
 # =========================
 # UI HELPERS
 # =========================
@@ -276,10 +292,11 @@ draw_toast() {
 }
 
 draw() {
-  local br vol night_light_pct night_light_temp night_light_status
+  local br vol night_light_pct night_light_temp night_light_status transparency
   br=$(get_brightness)
   vol=$(get_volume)
   night_light_pct=$(get_night_light_pct)
+  transparency=$(get_transparency)
   night_light_temp=$(night_light_temp_from_pct "$night_light_pct")
   if is_night_light_on; then
     night_light_status="on "
@@ -302,10 +319,13 @@ draw() {
   printf "\n    %b %b%3d%%${C_RESET}\n\n" "$(bar "$vol")" "$C_VALUE" "$vol"
   selected_inline 2 "🌙 Night Light"
   printf "\n    %b %b%3d%%${C_RESET} ${C_DIM}🌙 %s${C_RESET}\n\n" "$(bar "$night_light_pct")" "$C_VALUE" "$night_light_pct" "$night_light_status"
+  selected_line 3 "▧  App Transparency"
+  printf "    %b %b%3d%% transparent${C_RESET}\n\n" "$(bar "$transparency")" "$C_VALUE" "$transparency"
 
   # Bottom rounded box with help
   printf "${C_BOX}╭──────────────────────────────────────╮${C_RESET}\n"
   printf "${C_BOX}│${C_RESET}${C_HELP}  ↑↓ select   ← decrease   → increase  ${C_BOX}│${C_RESET}\n"
+  printf "${C_BOX}│${C_RESET}${C_HELP}  0 solid → 95% transparent           ${C_BOX}│${C_RESET}\n"
   printf "${C_BOX}│${C_RESET}${C_HELP}  Space night  Home min  End max      ${C_BOX}│${C_RESET}\n"
   printf "${C_BOX}│${C_RESET}${C_HELP}  q quit                              ${C_BOX}│${C_RESET}\n"
   printf "${C_BOX}╰──────────────────────────────────────╯${C_RESET}\n"
@@ -368,17 +388,18 @@ handle_action() {
       ;;
     up)
       ((selected--))
-      (( selected < 0 )) && selected=2
+      (( selected < 0 )) && selected=3
       ;;
     down)
       ((selected++))
-      (( selected > 2 )) && selected=0
+      (( selected > 3 )) && selected=0
       ;;
     right)
       case "$selected" in
         0) set_brightness_up ;;
         1) set_volume_up ;;
         2) set_night_light_up ;;
+        3) set_transparency "$(( $(get_transparency) + step_transparency > 95 ? 95 : $(get_transparency) + step_transparency ))" ;;
       esac
       ;;
     left)
@@ -386,6 +407,7 @@ handle_action() {
         0) set_brightness_down ;;
         1) set_volume_down ;;
         2) set_night_light_down ;;
+        3) set_transparency "$(( $(get_transparency) - step_transparency < 0 ? 0 : $(get_transparency) - step_transparency ))" ;;
       esac
       ;;
     home)
@@ -393,6 +415,7 @@ handle_action() {
         0) change_brightness set 1% && toast_msg="Brightness 1%" && toast_timer=8 ;;
         1) pactl set-sink-volume @DEFAULT_SINK@ 0% >/dev/null 2>&1 || true ;;
         2) set_night_light_min ;;
+        3) set_transparency 0 ;;
       esac
       ;;
     end)
@@ -400,6 +423,7 @@ handle_action() {
         0) change_brightness set 100% && toast_msg="Brightness 100%" && toast_timer=8 ;;
         1) pactl set-sink-volume @DEFAULT_SINK@ 100% >/dev/null 2>&1 || true ;;
         2) set_night_light_max ;;
+        3) set_transparency 95 ;;
       esac
       ;;
     toggle)

@@ -57,6 +57,13 @@ launch_sway_preview() {
   (( SETUP_FINAL_SWAY_LAUNCHED == 0 )) || return 0
   SETUP_FINAL_SWAY_LAUNCHED=1
   command -v sway >/dev/null 2>&1 || { warn 'Sway preview could not open: sway is not installed.'; return 0; }
+
+  if target_sway_socket >/dev/null 2>&1; then
+    info 'Sway session detected; reloading its configuration without opening a preview window.'
+    reload_target_sway || warn 'The active Sway session could not be reloaded; see the setup log.'
+    return 0
+  fi
+
   if [[ -z "${DISPLAY:-}" ]]; then
     warn 'Sway preview could not open: X11 DISPLAY is unavailable for WLR_BACKENDS=x11.'
     return 0
@@ -175,11 +182,9 @@ run_report() {
     info "Log out and back in to apply the group membership changed during this run."
   fi
 
-  # The preview is the final interactive action. The existing completion and
-  # summary output is printed only after the preview Sway instance exits.
+  # Reload the active Sway session, or show the temporary preview on another
+  # desktop. Print the completion summary only after that action finishes.
   launch_sway_preview
-  info 'Reloading the active Sway session after the preview closes.'
-  reload_target_sway || true
   printf '%s========================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
   if (( ${#SETUP_REQUIRED_FAILURES[@]} )); then
     error "Setup did not complete successfully: ${#SETUP_REQUIRED_FAILURES[@]} required verification failure(s)"

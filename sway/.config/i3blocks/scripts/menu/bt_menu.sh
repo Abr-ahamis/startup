@@ -280,6 +280,20 @@ close_bluetooth() {
   ok "Bluetooth closed"
 }
 
+control_transparency() {
+  local value="${1:-}" result
+  [[ -n "$value" ]] || { read -rp 'App transparency (0-95%): ' value || return 0; }
+  if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value > 95 )); then
+    fail 'Enter a whole number from 0 to 95.'
+    return 1
+  fi
+  if result="$("$HOME/.local/bin/sway-opacity-control.sh" set "$value" 2>&1)"; then
+    ok "App transparency set to ${value}%"
+  else
+    fail "$result"
+  fi
+}
+
 show_header() {
   clear
   echo -e "${C_LINE}====================================${C_RESET}"
@@ -344,6 +358,7 @@ show_help() {
   echo -e "  ${C_OK}open${C_RESET}             unblock, start, and power on Bluetooth"
   echo -e "  ${C_OK}close${C_RESET}            power off, stop service, and block Bluetooth"
   echo -e "  ${C_OK}status${C_RESET}           show current Bluetooth status"
+  echo -e "  ${C_OK}transparency${C_RESET}     set app transparency from 0% to 95%"
   echo -e "  ${C_OK}help${C_RESET}             show this help"
   echo -e "  ${C_OK}exit${C_RESET}             stop scanning and quit"
   line
@@ -491,6 +506,12 @@ handle_command() {
       show_status
       read -rp "Press Enter..."
       ;;
+    transparency|opacity)
+      control_transparency
+      ;;
+    transparency\ *|opacity\ *)
+      control_transparency "${input#* }"
+      ;;
     help|h|\?)
       show_help
       read -rp "Press Enter..."
@@ -532,7 +553,7 @@ main() {
 
     draw
     echo
-    echo -e "${C_DIM}Commands:${C_RESET} ${C_OK}<number>${C_RESET} | ${C_OK}list${C_RESET} | ${C_OK}disconnect${C_RESET} | ${C_OK}open${C_RESET} | ${C_OK}close${C_RESET} | ${C_OK}status${C_RESET} | ${C_OK}help${C_RESET} | ${C_OK}exit${C_RESET}"
+    echo -e "${C_DIM}Commands:${C_RESET} ${C_OK}<number>${C_RESET} | ${C_OK}list${C_RESET} | ${C_OK}disconnect${C_RESET} | ${C_OK}open${C_RESET} | ${C_OK}close${C_RESET} | ${C_OK}status${C_RESET} | ${C_OK}transparency${C_RESET} | ${C_OK}help${C_RESET} | ${C_OK}exit${C_RESET}"
 
     if read -t "$REFRESH_SECONDS" -rp "$(echo -e "${C_HEADER}Select:${C_RESET} ")" input; then
       handle_command "$input"

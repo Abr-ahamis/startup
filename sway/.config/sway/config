@@ -102,7 +102,9 @@ bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_me
 bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 
 # System controls
-bindsym $mod+Ctrl+l exec swaylock -f -c $lockcolor
+bindsym $mod+Ctrl+l exec swaylock --daemonize --color 000000
+# Also accept Shift+L for keyboards or launchers that report the capital keysym.
+bindsym $mod+Ctrl+Shift+l exec swaylock --daemonize --color 000000
 bindsym $mod+Ctrl+a exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 bindsym $mod+Ctrl+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
 bindsym $mod+Ctrl+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"

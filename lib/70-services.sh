@@ -5,9 +5,9 @@ if [[ -n "${__SETUP_SERVICES_LOADED:-}" ]]; then return 0; fi
 __SETUP_SERVICES_LOADED=1
 
 find_target_sway_socket() {
-  local runtime="/run/user/$TARGET_UID"
-  [[ -d "$runtime" ]] || return 1
-  find "$runtime" -maxdepth 1 -type s -name 'sway-ipc.*.sock' -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR==1 {print $2}'
+  # Ignore stale sockets left behind by terminated compositor sessions.
+  # target_sway_socket tests each candidate with Sway IPC before returning it.
+  target_sway_socket
 }
 
 reload_target_sway() {

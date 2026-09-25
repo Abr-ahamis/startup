@@ -30,6 +30,26 @@ start_script() {
   pgrep -u "$uid" -f -- "$script" >/dev/null 2>&1 || "$script" >/dev/null 2>&1 &
 }
 
+start_opacity_watcher() {
+  local pid cmdline killed_legacy=0
+  [[ "${STARTUP_SWAY_PREVIEW:-0}" != 1 && -n "${SWAYSOCK:-}" ]] || return 0
+  # Stop the legacy watcher, which forced its own 75/85% opacity values and
+  # overwrote the menu slider whenever a window event arrived.
+  while read -r pid; do
+    [[ -r "/proc/$pid/cmdline" ]] || continue
+    cmdline="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null || true)"
+    [[ "$cmdline" == *"$home/.local/bin/opacity.sh"* ]] || continue
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill "$pid" 2>/dev/null || true
+    killed_legacy=1
+  done < <(pgrep -u "$uid" -f -- "$home/.local/bin/opacity.sh" 2>/dev/null || true)
+
+  (( killed_legacy == 0 )) || sleep 0.1
+  pgrep -u "$uid" -f -- "$home/.local/bin/sway-opacity-control.sh watch" >/dev/null 2>&1 && return 0
+  [[ -x "$home/.local/bin/opacity.sh" ]] || return 0
+  "$home/.local/bin/opacity.sh" >/dev/null 2>&1 &
+}
+
 # Do not allow distro-provided Gammastep desktop entries to start in the Sway
 # session.  Their default GeoClue location provider is commonly denied and
 # produces repeated errors on systems without enabled location services.
@@ -70,7 +90,7 @@ start_process nm-applet nm-applet
 start_process blueman-applet blueman-applet
 start_process dunst dunst
 start_process dex dex --autostart --environment sway
-start_script "$home/.local/bin/opacity.sh"
+start_opacity_watcher
 # battery-monitor.service is enabled as a target-user unit by the installer;
 # do not launch a second copy from the session script.
 
