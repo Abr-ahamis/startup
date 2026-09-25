@@ -61,7 +61,7 @@ fi
 
 # ---------- Timestamp + paths (private, per target user) ----------
 SETUP_TIMESTAMP="$(date +'%Y-%m-%d+%H:%M:%S')"
-SETUP_BASE_DIR="${SETUP_BASE_DIR:-/tmp/startup-setup-$TARGET_UID}"
+SETUP_BASE_DIR="${SETUP_BASE_DIR:-$(mktemp -d "/tmp/startup-setup-$TARGET_UID.XXXXXX")}"
 SETUP_LOG_DIR="$SETUP_BASE_DIR/log"
 SETUP_LOG_FILE="$SETUP_LOG_DIR/setup-$SETUP_TIMESTAMP.log"
 SETUP_TRANSCRIPT_FILE="$SETUP_LOG_DIR/transcript-$SETUP_TIMESTAMP.log"
@@ -104,8 +104,40 @@ log_command() {
 }
 
 _setup_init_log() {
-  mkdir -p -m 700 "$SETUP_LOG_DIR" 2>/dev/null || true
-  mkdir -p -m 700 "$SETUP_RUNTIME_DIR" 2>/dev/null || true
+  local path needs_root=0
+  umask 077
+  for path in "$SETUP_BASE_DIR" "$SETUP_LOG_DIR" "$SETUP_RUNTIME_DIR"; do
+    [[ ! -L "$path" ]] || { error "Refusing symlinked installer state directory: $path"; return 1; }
+  done
+  for path in "$SETUP_LOG_FILE" "$SETUP_TRANSCRIPT_FILE" "$SETUP_ACTIVE_PID_FILE"; do
+    [[ ! -L "$path" ]] || { error "Refusing symlinked installer state file: $path"; return 1; }
+  done
+
+  # A fresh per-run directory prevents sudo and non-sudo invocations from
+  # sharing root-owned log files. If a caller explicitly reuses old state,
+  # repair its ownership only when the current user cannot write it.
+  mkdir -p -m 700 "$SETUP_BASE_DIR" "$SETUP_LOG_DIR" "$SETUP_RUNTIME_DIR" 2>/dev/null || needs_root=1
+  [[ -w "$SETUP_BASE_DIR" && -w "$SETUP_LOG_DIR" && -w "$SETUP_RUNTIME_DIR" ]] || needs_root=1
+  if (( needs_root )); then
+    run_as_root install -d -o "$TARGET_USER" -g "$TARGET_GROUP" -m 700 \
+      "$SETUP_BASE_DIR" "$SETUP_LOG_DIR" "$SETUP_RUNTIME_DIR" || return 1
+    run_as_root find "$SETUP_LOG_DIR" -maxdepth 1 -type f -exec chown "$TARGET_USER:$TARGET_GROUP" -- {} + || return 1
+  else
+    chmod 700 "$SETUP_BASE_DIR" "$SETUP_LOG_DIR" "$SETUP_RUNTIME_DIR" || return 1
+  fi
+  find "$SETUP_LOG_DIR" -maxdepth 1 -type f -exec chmod 600 -- {} + || return 1
+
+  for path in "$SETUP_LOG_FILE" "$SETUP_TRANSCRIPT_FILE" "$SETUP_ACTIVE_PID_FILE"; do
+    if [[ ! -e "$path" ]]; then
+      install -m 600 /dev/null "$path" || return 1
+    fi
+  done
+  if (( needs_root )); then
+    run_as_root chown "$TARGET_USER:$TARGET_GROUP" "$SETUP_LOG_FILE" "$SETUP_TRANSCRIPT_FILE" "$SETUP_ACTIVE_PID_FILE" || return 1
+  fi
+  chmod 600 "$SETUP_LOG_FILE" "$SETUP_TRANSCRIPT_FILE" "$SETUP_ACTIVE_PID_FILE" 2>/dev/null || {
+    run_as_root chmod 600 "$SETUP_LOG_FILE" "$SETUP_TRANSCRIPT_FILE" "$SETUP_ACTIVE_PID_FILE" || return 1
+  }
 }
 
 start_transcript_logging() {
@@ -556,7 +588,7 @@ prompt_yes_no_timeout() {
 }
 
 # Initialize log
-_setup_init_log
+_setup_init_log || exit 1
 trap 'setup_interrupted INT 130' INT
 trap 'setup_interrupted TERM 143' TERM
 trap 'setup_interrupted HUP 129' HUP

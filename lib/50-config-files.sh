@@ -474,6 +474,7 @@ run_config_files() {
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/systemd" "$TARGET_HOME/.config/systemd" "User systemd units" 0 || failed=1
   (( failed == 0 )) && ok_indented 'Copied .config files' || warn "Some .config resources were not copied; existing files were preserved."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/bin" "$TARGET_HOME/.local/bin" "User commands" 0 || failed=1
+  configure_backlight_access || warn 'Brightness device access could not be configured; brightness changes may need administrator setup.'
   (( failed == 0 )) && ok_indented 'Copied .local/bin files' || warn "Some user commands were not copied."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/share/fonts" "$TARGET_HOME/.local/share/fonts" "Fonts" 0 || failed=1
   if [[ -d "$SCRIPT_DIR/sway/.local/share/fonts" ]]; then

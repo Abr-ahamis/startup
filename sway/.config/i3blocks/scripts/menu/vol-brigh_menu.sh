@@ -168,15 +168,25 @@ toggle_night_light() {
 # =========================
 # SET VALUES
 # =========================
+change_brightness() {
+  # Run the same operation directly first (udev/video permissions), then use
+  # the narrowly scoped sudoers rule installed by main.sh when required.
+  if brightnessctl "$@" >/dev/null 2>&1 || { command -v sudo >/dev/null 2>&1 && sudo -n brightnessctl "$@" >/dev/null 2>&1; }; then
+    pkill -RTMIN+11 i3blocks 2>/dev/null || true
+    return 0
+  fi
+  toast_msg="Brightness change failed (check backlight permissions)"
+  toast_timer=8
+  return 1
+}
+
 set_brightness_up() {
-  "$HOME/.local/bin/brightness-control.sh" set "${step_brightness}%+" >/dev/null 2>&1 || true
-  toast_msg="Brightness +${step_brightness}%"
+  change_brightness set "${step_brightness}%+" && toast_msg="Brightness +${step_brightness}%"
   toast_timer=8
 }
 
 set_brightness_down() {
-  "$HOME/.local/bin/brightness-control.sh" set "${step_brightness}%-" >/dev/null 2>&1 || true
-  toast_msg="Brightness -${step_brightness}%"
+  change_brightness set "${step_brightness}%-" && toast_msg="Brightness -${step_brightness}%"
   toast_timer=8
 }
 
@@ -380,14 +390,14 @@ handle_action() {
       ;;
     home)
       case "$selected" in
-        0) "$HOME/.local/bin/brightness-control.sh" set 1% >/dev/null 2>&1 || true ;;
+        0) change_brightness set 1% && toast_msg="Brightness 1%" && toast_timer=8 ;;
         1) pactl set-sink-volume @DEFAULT_SINK@ 0% >/dev/null 2>&1 || true ;;
         2) set_night_light_min ;;
       esac
       ;;
     end)
       case "$selected" in
-        0) "$HOME/.local/bin/brightness-control.sh" set 100% >/dev/null 2>&1 || true ;;
+        0) change_brightness set 100% && toast_msg="Brightness 100%" && toast_timer=8 ;;
         1) pactl set-sink-volume @DEFAULT_SINK@ 100% >/dev/null 2>&1 || true ;;
         2) set_night_light_max ;;
       esac

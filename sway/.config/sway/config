@@ -5,8 +5,9 @@
 set $mod Mod4
 set $alt Mod1
 
-set $bar-hight 16
-set $bar-font-size 7
+set $bar-hight 14
+set $bar-font-size 6
+set $lockcolor #000000
 
 set $launcher ~/.config/sway/scripts/launch-app.sh
 set $term $launcher terminal
@@ -39,12 +40,12 @@ set $ws10 "10: 󰖂"
 # ---------------------------
 # Window appearance
 # ---------------------------
-default_border pixel 2
-default_floating_border pixel 2
+default_border none
+default_floating_border none
 
-gaps inner 2
-gaps outer 2
-smart_gaps off
+gaps inner 1
+gaps outer 1
+smart_gaps on
 output * scale 1
 
 
@@ -57,16 +58,15 @@ set $text-color          #cdd6f4
 set $inactive-text-color #585b70
 set $urgent-bg-color     #f38ba8
 
-client.focused          #3b82f6            $bg-color           $text-color           #3b82f6  $bg-color
-client.focused_inactive $inactive-bg-color $inactive-bg-color $inactive-text-color #313244  $inactive-bg-color
-client.unfocused        $inactive-bg-color $inactive-bg-color $inactive-text-color #313244  $inactive-bg-color
-client.urgent            $urgent-bg-color   $urgent-bg-color   $text-color          #3b82f6  $urgent-bg-color
+client.focused          $bg-color           $bg-color           $text-color           $bg-color           $bg-color
+client.focused_inactive $inactive-bg-color $inactive-bg-color $inactive-text-color $inactive-bg-color $inactive-bg-color
+client.unfocused        $inactive-bg-color $inactive-bg-color $inactive-text-color $inactive-bg-color $inactive-bg-color
+client.urgent           $urgent-bg-color   $urgent-bg-color   $text-color          $urgent-bg-color   $urgent-bg-color
 
 
 
 for_window [app_id="wofi"] floating enable
 for_window [app_id="wofi"] move position center
-for_window [app_id="wofi"] border pixel 1
 for_window [app_id="wofi"] sticky enable
 
 # ---------------------------
@@ -82,7 +82,7 @@ bindsym $mod+d exec wofi --show drun --prompt "󰍉  Search Applications" --inse
 bindsym Shift+F1 exec ~/.config/sway/scripts/key-help-wofi.sh
 bindsym $mod+k exec ~/.config/sway/scripts/key-help-wofi.sh
 
-bindsym $mod+Escape exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
+bindsym $mod+Escape exec bash -lc "$HOME/.config/sway/scripts/power-menu.sh;"
 bindsym $mod+Shift+Return exec $browser
 bindsym $mod+Shift+f exec $filemanager
 bindsym $mod+Shift+t exec $launcher telegram
@@ -94,15 +94,15 @@ bindsym $mod+Shift+o exec $launcher obsidian
 # Existing utility menus
 bindsym Ctrl+Alt+r reload
 bindsym Ctrl+Alt+e exit
-bindsym Ctrl+Alt+l exec swaylock -f -c 2f343f
-bindsym Ctrl+Alt+p exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
+bindsym Ctrl+Alt+l exec swaylock -f -c $lockcolor
+bindsym Ctrl+Alt+p exec bash -lc "$HOME/.config/sway/scripts/power-menu.sh;"
 bindsym Ctrl+Alt+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
 bindsym Ctrl+Alt+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
 bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_menu.sh; exec bash"
 bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 
 # System controls
-bindsym $mod+Ctrl+l exec swaylock -f -c 2f343f
+bindsym $mod+Ctrl+l exec swaylock -f -c $lockcolor
 bindsym $mod+Ctrl+a exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 bindsym $mod+Ctrl+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
 bindsym $mod+Ctrl+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
@@ -122,6 +122,9 @@ bindsym $mod+Ctrl+v exec sh -c 'cliphist list | wofi --dmenu --insensitive --pro
 bindsym Ctrl+Shift+Mod4+q exec systemctl poweroff
 bindsym Ctrl+Shift+Mod4+a exec systemctl reboot
 bindsym Ctrl+Shift+Mod4+s exec systemctl suspend
+
+# Graphical authentication prompts for pkexec actions (for example Bluetooth).
+exec_always --no-startup-id ~/.local/bin/polkit-agent.sh
 
 # Window and layout controls
 bindsym $mod+w kill
@@ -172,15 +175,15 @@ bindsym Alt+XF86MonBrightnessUp exec ~/.local/bin/brightness-control.sh set '1%+
 
 # Resize mode and direct resize keys
 mode "resize" {
-    bindsym j resize shrink width 2px
-    bindsym k resize grow height 2px
-    bindsym l resize shrink height 2px
-    bindsym semicolon resize grow width 2px
+    bindsym j resize shrink width 4px
+    bindsym k resize grow height 4px
+    bindsym l resize shrink height 4px
+    bindsym semicolon resize grow width 4px
 
-    bindsym Left  resize shrink width 2px
-    bindsym Down  resize grow height 2px
-    bindsym Up    resize shrink height 2px
-    bindsym Right resize grow width 2px
+    bindsym Left  resize shrink width 4px
+    bindsym Down  resize grow height 4px
+    bindsym Up    resize shrink height 4px
+    bindsym Right resize grow width 4px
 
     bindsym Return mode "default"
     bindsym Escape mode "default"
@@ -262,7 +265,7 @@ bar {
     pango_markup enabled
     font pango:JetBrainsMono Nerd Font $bar-font-size
     height $bar-hight
-    position top
+    position bottom
     tray_output none
 
     colors {
@@ -283,14 +286,15 @@ bar {
 # ---------------------------
 
 exec_always ~/.local/bin/startup-session.sh
+
 input type:keyboard xkb_numlock enabled
 bindsym XF86RFKill exec nmcli radio wifi toggle
+
 # Don't suspend when the laptop lid is closed
 exec swayidle -w \
-    timeout 300 'swaylock -f -c 2f343f' \
-    timeout 600 'swaymsg "output * dpms off"' \
-    resume 'swaymsg "output * dpms on"' \
-    before-sleep 'swaylock -f -c 2f343f'
+    timeout 1800 'swaylock -f -c $lockcolor' \
+    timeout 3600 'systemctl suspend' \
+    before-sleep 'swaylock -f -c $lockcolor'
 
 # Ignore the laptop lid switch
 bindswitch --reload --locked lid:off exec true

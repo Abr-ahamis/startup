@@ -46,6 +46,11 @@ add_missing_pkg() {
 run_sudo() {
   if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
     "$@"
+  elif [[ -n "${WAYLAND_DISPLAY:-}" ]] && need_cmd pkexec; then
+    # Sway starts the GNOME PolicyKit agent from polkit-agent.sh. pkexec then
+    # presents its graphical authentication dialog instead of a hidden sudo
+    # prompt inside the menu.
+    pkexec "$@"
   elif [[ -t 0 ]]; then
     sudo "$@"
   else

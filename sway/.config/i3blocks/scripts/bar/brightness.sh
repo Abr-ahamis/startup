@@ -15,6 +15,12 @@ case "${BLOCK_BUTTON:-}" in
   1)
     foot -e "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh" >/dev/null 2>&1 &
     ;;
+  4)
+    "$HOME/.local/bin/brightness-control.sh" set '5%+' >/dev/null 2>&1 || true
+    ;;
+  5)
+    "$HOME/.local/bin/brightness-control.sh" set '5%-' >/dev/null 2>&1 || true
+    ;;
 esac
 
 # =========================
