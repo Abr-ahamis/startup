@@ -120,7 +120,7 @@ bindsym Ctrl+Alt+Delete exec $close_all
 bindsym $mod+comma exec dunstctl close
 bindsym $mod+Shift+comma exec dunstctl close-all
 bindsym $mod+Ctrl+comma exec dunstctl set-paused toggle
-bindsym $mod+Ctrl+v exec sh -c 'cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard | cliphist decode | wl-copy'
+bindsym $mod+Ctrl+v exec sh -c 'cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard --width 620 --height 820 | cliphist decode | wl-copy'
 
 bindsym Ctrl+Shift+Mod4+q exec systemctl poweroff
 bindsym Ctrl+Shift+Mod4+a exec systemctl reboot

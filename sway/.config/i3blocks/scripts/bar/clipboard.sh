@@ -14,7 +14,7 @@ ICON_COLOR="#cba6f7"
 case "${BLOCK_BUTTON:-}" in
   1)
     if command -v cliphist >/dev/null 2>&1; then
-      cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard | cliphist decode | wl-copy
+      cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard --width 620 --height 820 | cliphist decode | wl-copy
     fi >/dev/null 2>&1 &
     ;;
   3)
