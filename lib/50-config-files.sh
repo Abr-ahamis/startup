@@ -174,6 +174,31 @@ copy_tree_with_backup() {
   [[ "$announce" == "0" ]] || ok "$label installed"
 }
 
+# Foot 1.21 (Debian 13) uses the single [colors] section, while newer releases
+# use [colors-dark]. Keep the repository config on the modern format and adapt
+# only the staged deployment when the installed Foot parser requires it.
+prepare_foot_config_source() {
+  local source="$SCRIPT_DIR/sway/.config/foot" config temp_dir
+  FOOT_CONFIG_SOURCE="$source"
+  command -v foot >/dev/null 2>&1 || return 0
+  config="$source/foot.ini"
+  [[ -r "$config" ]] || return 1
+  foot --check-config --config "$config" >/dev/null 2>&1 && return 0
+
+  temp_dir="$(mktemp -d "$SETUP_RUNTIME_DIR/foot-config.XXXXXX")" || return 1
+  cp -a "$source/." "$temp_dir/" || return 1
+  sed -i 's/^\[colors-dark\]$/[colors]/' "$temp_dir/foot.ini" || return 1
+  if ! foot --check-config --config "$temp_dir/foot.ini" >/dev/null 2>&1; then
+    rm -rf -- "$temp_dir"
+    warn 'Foot rejected both supported color section formats; configuration was not deployed.'
+    return 1
+  fi
+  FOOT_CONFIG_SOURCE="$temp_dir"
+  if declare -F _setup_log_write >/dev/null; then
+    _setup_log_write INFO 'Adapted Foot colors-dark section to legacy colors format for installed Foot parser.'
+  fi
+}
+
 # Legacy fallback used only when the managed sway/.config/startup tree is
 # absent from the project checkout: aliases only, no prompt or shell
 # settings. Normal installs deploy the full tree instead (see
@@ -220,12 +245,6 @@ alias c='clear'
 alias ..='cd ..'
 alias ...='cd ../..'
 alias ....='cd ../../..'
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline --graph --decorate'
-
 # Project convenience aliases.
 alias startpro='mkdir -p ~/pro/{ctf/{htb/{challenges,machines,sherlocks,start,vpn},{thm/{vpn,machines}}},proje,repo}'
 alias pro='cd ~/pro'
@@ -466,7 +485,11 @@ run_config_files() {
   fix_project_script_permissions "$SCRIPT_DIR"
 
   local failed=0 target
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/foot" "$TARGET_HOME/.config/foot" "Foot configuration" 0 || failed=1
+  if prepare_foot_config_source; then
+    copy_tree_with_backup "$FOOT_CONFIG_SOURCE" "$TARGET_HOME/.config/foot" "Foot configuration" 0 || failed=1
+  else
+    failed=1
+  fi
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/i3blocks" "$TARGET_HOME/.config/i3blocks" "i3blocks configuration" 0 || failed=1
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/sway" "$TARGET_HOME/.config/sway" "Sway configuration" 0 || failed=1
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/flameshot" "$TARGET_HOME/.config/flameshot" "Flameshot configuration" 0 || failed=1
@@ -476,6 +499,20 @@ run_config_files() {
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/bin" "$TARGET_HOME/.local/bin" "User commands" 0 || failed=1
   configure_backlight_access || warn 'Brightness device access could not be configured; brightness changes may need administrator setup.'
   (( failed == 0 )) && ok_indented 'Copied .local/bin files' || warn "Some user commands were not copied."
+  if [[ -x "$TARGET_HOME/.local/bin/setup-neovim.sh" ]]; then
+    if run_as_target env HOME="$TARGET_HOME" PATH="$TARGET_HOME/.local/bin:$PATH" "$TARGET_HOME/.local/bin/setup-neovim.sh" >>"$SETUP_LOG_FILE" 2>&1; then
+      ok_indented 'Neovim version checked and LazyVim configuration prepared'
+    else
+      warn 'Neovim could not be upgraded/configured automatically; see the setup log and run setup-neovim.sh as the target user.'
+    fi
+  fi
+  if [[ -x "$TARGET_HOME/.local/bin/setup-shell-intelligence.sh" ]]; then
+    if run_as_target env HOME="$TARGET_HOME" PATH="$TARGET_HOME/.local/bin:$PATH" "$TARGET_HOME/.local/bin/setup-shell-intelligence.sh" >>"$SETUP_LOG_FILE" 2>&1; then
+      ok_indented 'Optional Bash inline suggestions installed (opt-in to limit memory use)'
+    else
+      warn 'Optional Bash suggestions could not be installed; run setup-shell-intelligence.sh as the target user when network access is available.'
+    fi
+  fi
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/share/fonts" "$TARGET_HOME/.local/share/fonts" "Fonts" 0 || failed=1
   if [[ -d "$SCRIPT_DIR/sway/.local/share/fonts" ]]; then
     run_as_target fc-cache -f "$TARGET_HOME/.local/share/fonts" >/dev/null 2>&1 || warn "Font cache refresh failed; it will refresh on next login."

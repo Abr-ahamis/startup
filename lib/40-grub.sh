@@ -47,6 +47,13 @@ grub_set_theme() {
   run_as_root sh -c 'awk -v theme="$1" -v background="$2" '\''BEGIN {theme_done=0; background_done=0} /^[[:space:]]*GRUB_THEME=/ {if (!theme_done) print theme; theme_done=1; next} /^[[:space:]]*GRUB_BACKGROUND=/ {if (!background_done) print background; background_done=1; next} {print} END {if (!theme_done) print theme; if (!background_done) print background}'\'' "$3" > "$4"' sh "GRUB_THEME=\"$theme\"" "GRUB_BACKGROUND=\"$background\"" "$defaults" "$temp" || { run_as_root rm -f -- "$temp"; return 1; }
   run_as_root chmod 644 "$temp" && run_as_root mv -f -- "$temp" "$defaults"
 }
+grub_prepare_theme_parent() {
+  local parent
+  parent="$(dirname -- "$1")"
+  # A custom GRUB_THEME may point below a themes directory that the
+  # distribution has not created yet (common on Debian installations).
+  run_as_root install -d -m 755 -- "$parent"
+}
 grub_verify_theme() {
   local theme="$1" dest; dest="$(dirname -- "$theme")"
   [[ -f "$theme" && ! -L "$theme" && -d "$dest" ]] || return 1
@@ -126,6 +133,7 @@ install_grub_theme() {
       [[ ! -L "$theme_dir" ]] || { required_failure "Refusing symlinked GRUB theme destination: $theme_dir"; return 1; }
       run_as_root cp -a "$theme_dir" "$backup" || return 1
     fi
+    grub_prepare_theme_parent "$theme_dir" || return 1
     stage="$(run_as_root mktemp -d "$(dirname -- "$theme_dir")/.startup-grub.XXXXXX")" || return 1
     if ! run_as_root cp -a "$src/." "$stage/" || ! diff -qr --no-dereference "$src" "$stage" >/dev/null; then
       run_as_root rm -rf -- "$stage"

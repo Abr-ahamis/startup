@@ -21,17 +21,17 @@ entries=(
 
   "@ Applications|"
   "Super + Shift + Enter|Browser"
-  "Super + Shift + Alt + B|Secondary browser"
   "Super + Shift + F|File manager"
   "Super + Shift + T|Telegram"
-  "Super + Shift + N|Text editor"
+  "Super + Shift + N|Neovim"
+  "Super + Shift + Alt + N|Text editor"
   "Super + Shift + C|VS Code"
   "Super + Shift + O|Obsidian"
   "Print|Screenshot"
 
   "@ Window controls|"
   "Super + W|Close focused window"
-  "Ctrl + Alt + Delete|Close all windows"
+  "Ctrl + Alt + Delete|Close all application windows"
   "Super + T|Toggle floating"
   "Super + O|Floating + sticky"
   "Super + F|Toggle fullscreen"
@@ -98,43 +98,41 @@ entries=(
 # ------------------------------------------------------------
 
 escape_markup() {
-    printf '%s' "$1" |
-        sed \
-            -e 's/&/\&amp;/g' \
-            -e 's/</\&lt;/g' \
-            -e 's/>/\&gt;/g'
+    REPLY="$1"
+    REPLY="${REPLY//&/\&amp;}"
+    REPLY="${REPLY//</\&lt;}"
+    REPLY="${REPLY//>/\&gt;}"
 }
 
 keycap() {
-    local key
-    key="$(escape_markup "$1")"
-
-    printf \
-        '<span background="#172b42" foreground="#8cc8ff"><b> %s </b></span>' \
-        "$key"
+    escape_markup "$1"
+    REPLY="<span background=\"#315273\" foreground=\"#f2f8ff\"><b> $REPLY </b></span>"
 }
 
 combo_markup() {
     local combo="$1"
     local output=""
     local part
+    local -a parts=()
 
     combo="${combo// + /+}"
 
     IFS='+' read -ra parts <<< "$combo"
 
     for part in "${parts[@]}"; do
-        part="$(printf '%s' "$part" | sed 's/^ *//;s/ *$//')"
+        part="${part#"${part%%[![:space:]]*}"}"
+        part="${part%"${part##*[![:space:]]}"}"
 
         [[ -z "$part" ]] && continue
 
         [[ -n "$output" ]] &&
-            output+=' <span foreground="#52657a">+</span> '
+            output+=' <span foreground="#a9bed4"><b>+</b></span> '
 
-        output+="$(keycap "$part")"
+        keycap "$part"
+        output+="$REPLY"
     done
 
-    printf '%s' "$output"
+    REPLY="$output"
 }
 
 # ------------------------------------------------------------
@@ -142,7 +140,7 @@ combo_markup() {
 # ------------------------------------------------------------
 
 build_menu() {
-    local entry combo action
+    local entry combo action combo_rendered action_rendered
 
     for entry in "${entries[@]}"; do
         IFS='|' read -r combo action <<< "$entry"
@@ -150,16 +148,19 @@ build_menu() {
         # Section header
         if [[ "$combo" == @* ]]; then
             printf \
-                '<span foreground="#72b7ff"><b> 󰘳  %s</b></span>\n' \
+                '<span foreground="#a6d5ff"><b> 󰘳  %s</b></span>\n' \
                 "${combo#@ }"
             continue
         fi
 
         combo_markup "$combo"
+        combo_rendered="$REPLY"
+        escape_markup "$action"
+        action_rendered="$REPLY"
 
         printf \
-            ' <span foreground="#44576d">→</span> <span foreground="#c8d4e3">%s</span>\n' \
-            "$(escape_markup "$action")"
+            '%s <span foreground="#b2c6da">→</span> <span foreground="#f1f5f9">%s</span>\n' \
+            "$combo_rendered" "$action_rendered"
     done
 }
 
@@ -168,7 +169,7 @@ build_menu() {
 # ------------------------------------------------------------
 
 build_menu |
-wofi \
+"$HOME/.local/bin/wofi-popup.sh" \
     --dmenu \
     --show dmenu \
     --location top right \
@@ -176,7 +177,7 @@ wofi \
     --allow-markup \
     --insensitive \
     --matching contains \
-    --sort-order alphabetical \
+    --sort-order default \
     --gtk-dark \
     --prompt "󰍉  Search keybindings" \
     --style "$STYLE" \

@@ -1,0 +1,3 @@
+# Keep installation media and virtual-machine state out of Git.
+*.iso
+win_storage/

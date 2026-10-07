@@ -129,7 +129,7 @@ run_gnome_desktop_setup() {
     return 0
   fi
   # Keep common window/workspace behavior aligned with the shipped Sway map.
-  gnome_set_verified org.gnome.desktop.wm.keybindings close "['<Super><Shift>q']" || return 1
+  gnome_set_verified org.gnome.desktop.wm.keybindings close "['<Super>w']" || return 1
   gnome_set_verified org.gnome.desktop.wm.keybindings panel-main-menu "['<Super>d']" || return 1
   gnome_set_verified org.gnome.desktop.wm.keybindings toggle-fullscreen "['<Super>f']" || return 1
   gnome_set_verified org.gnome.desktop.wm.keybindings switch-to-workspace-left "['<Super>Left']" || return 1
@@ -140,13 +140,14 @@ run_gnome_desktop_setup() {
   local launcher="$TARGET_HOME/.config/sway/scripts/launch-app.sh"
   [[ -x "$launcher" ]] || { warn "GNOME launcher binding source is not executable: $launcher"; return 1; }
   register_gnome_keybinding startup-terminal '<Super>Return' 'Terminal' "$launcher terminal" || return 1
-  register_gnome_keybinding startup-terminal-secondary '<Super><Shift>Return' 'Secondary terminal' "$launcher terminal-secondary" || return 1
-  register_gnome_keybinding startup-files '<Super><Shift>e' 'File manager' "$launcher filemanager" || return 1
-  register_gnome_keybinding startup-browser '<Super><Shift>f' 'Browser' "$launcher browser" || return 1
+  register_gnome_keybinding startup-terminal-secondary '<Super><Alt>Return' 'Secondary terminal' "$launcher terminal-secondary" || return 1
+  register_gnome_keybinding startup-files '<Super><Shift>f' 'File manager' "$launcher filemanager" || return 1
+  register_gnome_keybinding startup-browser '<Super><Shift>Return' 'Browser' "$launcher browser" || return 1
   local telegram_command="${STARTUP_TELEGRAM_COMMAND:-/opt/Telegram/Telegram}"
   [[ -x "$telegram_command" ]] || telegram_command="$launcher telegram"
   register_gnome_keybinding startup-telegram '<Super><Shift>t' 'Telegram' "$telegram_command" || return 1
-  register_gnome_keybinding startup-editor '<Super><Shift>n' 'Text editor' "$launcher editor" || return 1
+  register_gnome_keybinding startup-neovim '<Super><Shift>n' 'Neovim' "$launcher neovim" || return 1
+  register_gnome_keybinding startup-editor '<Super><Shift><Alt>n' 'Text editor' "$launcher editor" || return 1
   register_gnome_keybinding startup-screenshot '<Super><Shift>s' 'Screenshot' "$launcher screenshot" || return 1
   register_gnome_keybinding startup-code '<Super><Shift>c' 'VS Code' "$launcher code" || return 1
   register_gnome_keybinding startup-key-help '<Shift>F1' 'Sway key help' "$TARGET_HOME/.config/sway/scripts/key-help-wofi.sh" || return 1

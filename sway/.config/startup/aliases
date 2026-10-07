@@ -38,12 +38,6 @@ alias c='clear'
 alias ..='cd ..'
 alias ...='cd ../..'
 alias ....='cd ../../..'
-alias gs='git status'
-alias ga='git add'
-alias gc='git commit'
-alias gp='git push'
-alias gl='git log --oneline --graph --decorate'
-
 # Project convenience aliases.
 alias startpro='mkdir -p ~/pro/{ctf/{htb/{challenges,machines,sherlocks,start,vpn},{thm/{vpn,machines}}},proje,repo}'
 alias pro='cd ~/pro'

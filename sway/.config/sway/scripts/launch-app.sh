@@ -12,9 +12,30 @@ launch_first() {
   notify_missing "$1"; exit 127
 }
 
+launch_neovim() {
+  local nvim_bin terminal
+  if [[ -x "$user_home/.local/bin/nvim" ]]; then
+    nvim_bin="$user_home/.local/bin/nvim"
+  else
+    nvim_bin="$(command -v nvim 2>/dev/null || true)"
+  fi
+  [[ -n "$nvim_bin" ]] || { notify_missing neovim; exit 127; }
+  for terminal in foot alacritty kitty gnome-terminal xterm; do
+    command -v "$terminal" >/dev/null 2>&1 || continue
+    case "$terminal" in
+      foot|alacritty|xterm) exec "$terminal" -e "$nvim_bin" ;;
+      kitty) exec "$terminal" "$nvim_bin" ;;
+      gnome-terminal) exec "$terminal" -- "$nvim_bin" ;;
+    esac
+  done
+  notify_missing 'a terminal for neovim'
+  exit 127
+}
+
 case "${1:-}" in
   terminal) launch_first foot alacritty kitty gnome-terminal xterm ;;
   terminal-secondary) launch_first gnome-terminal foot alacritty kitty xterm ;;
+  neovim) launch_neovim ;;
   filemanager) launch_first nautilus nemo thunar pcmanfm ;;
   browser) launch_first brave-browser firefox google-chrome chromium ;;
   editor) launch_first gnome-text-editor gedit mousepad ;;
@@ -22,5 +43,5 @@ case "${1:-}" in
   telegram) launch_first /opt/Telegram/./Telegram telegram-desktop Telegram ;;
   code) launch_first code codium ;;
   obsidian) launch_first obsidian ;;
-  *) echo "Usage: $0 {terminal|terminal-secondary|filemanager|browser|editor|screenshot|telegram|code|obsidian}" >&2; exit 2 ;;
+  *) echo "Usage: $0 {terminal|terminal-secondary|neovim|filemanager|browser|editor|screenshot|telegram|code|obsidian}" >&2; exit 2 ;;
 esac

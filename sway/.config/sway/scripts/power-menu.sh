@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -uo pipefail
 
-if command -v wofi >/dev/null 2>&1; then
+if [[ -x "$HOME/.local/bin/wofi-popup.sh" ]]; then
   options="Shutdown
 Restart
 Sleep
 Logout
 Cancel"
 
-  choice="$(printf '%s\n' "$options" | wofi --dmenu --insensitive --prompt power 2>/dev/null || true)"
+  choice="$(printf '%s\n' "$options" | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt power 2>/dev/null || true)"
 
   case "$choice" in
     Shutdown)

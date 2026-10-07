@@ -53,8 +53,17 @@ separator=false
 separator_block_width=0
 interval=5
 
-[wifi]
+[wifi_adapter_1]
 command=~/.config/i3blocks/scripts/bar/wifi.sh
+instance=1
+markup=pango
+separator=false
+separator_block_width=0
+interval=5
+
+[wifi_adapter_2]
+command=~/.config/i3blocks/scripts/bar/wifi.sh
+instance=2
 markup=pango
 separator=false
 separator_block_width=0

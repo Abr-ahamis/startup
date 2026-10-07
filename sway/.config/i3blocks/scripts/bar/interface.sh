@@ -35,8 +35,8 @@ get_ip_for_iface() {
 }
 
 iface=""
-icon="$ICON_UNKNOWN"
-icon_color="$DISABLED"
+icon="$ICON_VPN"
+icon_color='#5E5CE6'
 
 for i in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^(tun|tap|wg|vpn|tailscale|zt|ppp)[0-9a-zA-Z_-]*$' | sort -u); do
   if [ -n "$(get_ip_for_iface "$i")" ]; then
@@ -47,29 +47,7 @@ for i in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^(tu
   fi
 done
 
-if [ -z "$iface" ]; then
-  for i in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^(eth|en)[0-9a-zA-Z_-]*$' | sort -u); do
-    if [ -n "$(get_ip_for_iface "$i")" ]; then
-      iface="$i"
-      icon="$ICON_ETH"
-      icon_color="$ACCENT"
-      break
-    fi
-  done
-fi
-
-if [ -z "$iface" ]; then
-  for i in $(ip -o link show 2>/dev/null | awk -F': ' '{print $2}' | grep -E '^(wl|wlan)[0-9a-zA-Z_-]*$' | sort -u); do
-    if [ -n "$(get_ip_for_iface "$i")" ]; then
-      iface="$i"
-      icon="$ICON_WIFI"
-      icon_color="$NETWORK"
-      break
-    fi
-  done
-fi
-
-[ -z "$iface" ] && iface="---"
+[ -z "$iface" ] && exit 0
 
 # =========================
 # Output

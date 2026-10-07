@@ -4,15 +4,22 @@ services:
     container_name: windows-11
 
     environment:
+      # These credentials are for the Windows guest. Change them before use.
       USERNAME: "user1"
       PASSWORD: "hipassword"
 
-      # EXACT Windows virtual disk capacity
-      DISK_SIZE: "32G"
+      # Windows virtual disk size. 64G is suitable for the default Windows 11.
+      DISK_SIZE: "64G"
 
+      # RAM and CPU assigned to the Windows guest; leave enough for the host.
       RAM_SIZE: "4G"
       CPU_CORES: "2"
 
+      # Optional: choose a downloaded Windows version. The default is Windows 11 Pro.
+      # When using a local ISO below, VERSION is ignored by dockur/windows.
+      # VERSION: "11"
+
+    # Hardware acceleration devices; required by the supported host/runtime.
     devices:
       - /dev/kvm
       - /dev/net/tun
@@ -20,13 +27,19 @@ services:
     cap_add:
       - NET_ADMIN
 
+    # Web viewer and RDP ports on the host.
     ports:
       - "8006:8006"
       - "3389:3389/tcp"
       - "3389:3389/udp"
 
     volumes:
-      - ./Window-{version}.iso:/custom.iso
+      # OPTIONAL CUSTOM ISO:
+      # 1. Put the ISO beside this compose.yaml, in scr/Docker/Window/.
+      # 2. Uncomment the next line and replace the example with the exact filename.
+      #    Example file: scr/Docker/Window/Windows_11.iso
+      # - ./Windows_11.iso:/custom.iso:ro
+      # Keep this persistent storage mount; it contains the installed Windows VM.
       - ./win_storage:/storage
 
     restart: "no"

@@ -76,9 +76,9 @@ for_window [app_id="wofi"] sticky enable
 # Applications and launchers
 bindsym $mod+Return exec $term
 bindsym $mod+Alt+Return exec $term2
-bindsym $mod+space exec wofi --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
-bindsym $mod+Alt+space exec wofi --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
-bindsym $mod+d exec wofi --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
+bindsym $mod+space exec ~/.local/bin/wofi-popup.sh --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
+bindsym $mod+Alt+space exec ~/.local/bin/wofi-popup.sh --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
+bindsym $mod+d exec ~/.local/bin/wofi-popup.sh --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
 bindsym Shift+F1 exec ~/.config/sway/scripts/key-help-wofi.sh
 bindsym $mod+k exec ~/.config/sway/scripts/key-help-wofi.sh
 
@@ -86,7 +86,8 @@ bindsym $mod+Escape exec bash -lc "$HOME/.config/sway/scripts/power-menu.sh;"
 bindsym $mod+Shift+Return exec $browser
 bindsym $mod+Shift+f exec $filemanager
 bindsym $mod+Shift+t exec $launcher telegram
-bindsym $mod+Shift+n exec $editor
+bindsym $mod+Shift+n exec $launcher neovim
+bindsym $mod+Shift+$alt+n exec $editor
 bindsym Print exec $screenshot
 bindsym $mod+Shift+c exec $launcher code
 bindsym $mod+Shift+o exec $launcher obsidian
@@ -119,7 +120,7 @@ bindsym Ctrl+Alt+Delete exec $close_all
 bindsym $mod+comma exec dunstctl close
 bindsym $mod+Shift+comma exec dunstctl close-all
 bindsym $mod+Ctrl+comma exec dunstctl set-paused toggle
-bindsym $mod+Ctrl+v exec sh -c 'cliphist list | wofi --dmenu --insensitive --prompt clipboard | cliphist decode | wl-copy'
+bindsym $mod+Ctrl+v exec sh -c 'cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard | cliphist decode | wl-copy'
 
 bindsym Ctrl+Shift+Mod4+q exec systemctl poweroff
 bindsym Ctrl+Shift+Mod4+a exec systemctl reboot

@@ -236,7 +236,6 @@ run_report() {
     printf 'Failed Packages: %s\n' "${FAILED_REQUIRED_PACKAGES[*]}"
   fi
   echo "Log file     : $SETUP_LOG_FILE"
-  echo "Aliases      : ll, la, gs, ga, gc, gp, gl, pro, ctf, repo"
   echo "Backups      :"
   [[ -d "${SETUP_BACKUP_DIR:-}" ]] && echo "  Installer  : $SETUP_BACKUP_DIR"
   [[ -d "${SETUP_WALLPAPER_BACKUP_DIR:-}" ]] && echo "  Wallpapers : $SETUP_WALLPAPER_BACKUP_DIR"

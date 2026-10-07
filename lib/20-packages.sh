@@ -16,14 +16,15 @@ package_for() {
     debian:git_libsecret) echo build-essential pkg-config libsecret-1-dev;; arch:git_libsecret) echo base-devel pkgconf libsecret;;
     debian:portal|arch:portal) echo xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk;; debian:audio|arch:audio) echo pipewire pipewire-pulse wireplumber;;
     debian:clipboard|arch:clipboard) echo cliphist;; debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pulseaudio-utils pamixer wl-clipboard cliphist network-manager network-manager-gnome bluez blueman rfkill mate-polkit xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-user-session brightnessctl dunst libnotify-bin fontconfig jq curl gnome-keyring grub-customizer timeshift libsecret-1-0 libsecret-tools seahorse gnupg age apparmor bubblewrap cryptsetup build-essential pkg-config libsecret-1-dev libpam-gnome-keyring git grub2-common;;
-    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber libpulse pamixer wl-clipboard cliphist networkmanager network-manager-applet bluez bluez-utils blueman rfkill polkit-gnome xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus brightnessctl dunst libnotify fontconfig jq curl gnome-keyring timeshift libsecret seahorse gnupg age apparmor bubblewrap cryptsetup base-devel pkgconf git;;
+    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pulseaudio-utils pamixer wl-clipboard cliphist network-manager network-manager-gnome bluez blueman rfkill mate-polkit xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-user-session brightnessctl dunst libnotify-bin fontconfig jq curl gnome-keyring grub-customizer timeshift libsecret-1-0 libsecret-tools seahorse gnupg age apparmor bubblewrap cryptsetup build-essential pkg-config libsecret-1-dev libpam-gnome-keyring git grub2-common neovim;;
+    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber libpulse pamixer wl-clipboard cliphist networkmanager network-manager-applet bluez bluez-utils blueman rfkill polkit-gnome xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus brightnessctl dunst libnotify fontconfig jq curl gnome-keyring timeshift libsecret seahorse gnupg age apparmor bubblewrap cryptsetup base-devel pkgconf git neovim;;
     *) return 1;; esac
 }
 package_get_version() { case "$PKG_MANAGER" in apt) dpkg-query -W -f='${Version}' "$1" 2>/dev/null;; pacman) pacman -Q "$1" 2>/dev/null | awk '{print $2}';; esac; }
 package_expected_command() {
   case "$1" in
     sway|swaybg|swayidle|swaylock|i3blocks|wofi|foot|dex|gammastep|flameshot|grim|slurp|pipewire|pipewire-pulse|wireplumber|pamixer|cliphist|rfkill|brightnessctl|dunst|jq|curl|timeshift|seahorse|age|cryptsetup|git|python3|pkg-config) printf '%s\n' "$1" ;;
+    neovim) printf '%s\n' nvim ;;
     pulseaudio-utils|libpulse) printf '%s\n' pactl ;;
     mate-polkit) printf '%s\n' /usr/libexec/polkit-mate-authentication-agent-1 ;;
     polkit-gnome) printf '%s\n' /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 ;;
