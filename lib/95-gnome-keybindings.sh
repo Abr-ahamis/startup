@@ -151,6 +151,6 @@ run_gnome_desktop_setup() {
   register_gnome_keybinding startup-screenshot '<Super><Shift>s' 'Screenshot' "$launcher screenshot" || return 1
   register_gnome_keybinding startup-code '<Super><Shift>c' 'VS Code' "$launcher code" || return 1
   register_gnome_keybinding startup-key-help '<Shift>F1' 'Sway key help' "$TARGET_HOME/.config/sway/scripts/key-help-wofi.sh" || return 1
-  register_gnome_keybinding startup-wifi XF86RFKill 'Toggle Wi-Fi' 'nmcli radio wifi toggle' || return 1
+  register_gnome_keybinding startup-wifi XF86RFKill 'Toggle Wi-Fi' "$TARGET_HOME/.local/bin/toggle-wifi-radio.sh" || return 1
   configure_gnome_dock || return 1
 }

@@ -16,7 +16,7 @@ ICON="󰍛"
 # =========================
 case "${BLOCK_BUTTON:-}" in
   1)
-    foot -e btop >/dev/null 2>&1 &
+    "$HOME/.local/bin/system-monitor.sh" >/dev/null 2>&1 &
     ;;
 esac
 

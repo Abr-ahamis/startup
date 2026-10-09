@@ -506,6 +506,14 @@ run_config_files() {
       warn 'Neovim could not be upgraded/configured automatically; see the setup log and run setup-neovim.sh as the target user.'
     fi
   fi
+  if [[ -x "$TARGET_HOME/.local/bin/setup-gtklock.sh" ]]; then
+    if run_as_target env HOME="$TARGET_HOME" XDG_CONFIG_HOME="$TARGET_HOME/.config" \
+      "$TARGET_HOME/.local/bin/setup-gtklock.sh" >>"$SETUP_LOG_FILE" 2>&1; then
+      ok_indented 'gtklock dark theme, clock, date, and style defaults prepared (existing customization preserved)'
+    else
+      warn 'gtklock defaults could not be prepared; run setup-gtklock.sh as the target user.'
+    fi
+  fi
   if [[ -x "$TARGET_HOME/.local/bin/setup-shell-intelligence.sh" ]]; then
     if run_as_target env HOME="$TARGET_HOME" PATH="$TARGET_HOME/.local/bin:$PATH" "$TARGET_HOME/.local/bin/setup-shell-intelligence.sh" >>"$SETUP_LOG_FILE" 2>&1; then
       ok_indented 'Optional Bash inline suggestions installed (opt-in to limit memory use)'

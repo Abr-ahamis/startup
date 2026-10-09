@@ -14,7 +14,7 @@ This reference follows the Omarchy-style keybinding layout while documenting the
 | **Super + Alt + Space** | Application launcher |
 | **Super + D** | Application launcher |
 | **Super + Escape** | System / power menu |
-| **Super + Ctrl + L** | Lock computer |
+| **Super + Ctrl + L** | Lock with gtklock (swaylock fallback) |
 | **Super + W** | Close focused window |
 | **Ctrl + Alt + Delete** | Close all application windows without logging out |
 | **Super + T** | Toggle window between tiling and floating |
@@ -24,8 +24,8 @@ This reference follows the Omarchy-style keybinding layout while documenting the
 | **Super + 1…9 / 0** | Jump to workspaces 1…9 / 10 |
 | **Super + Tab / Shift + Tab** | Next / previous workspace |
 | **Super + Ctrl + Tab** | Return to former workspace |
-| **Super + Shift + 1…9 / 0** | Move window to workspace |
-| **Super + Shift + Alt + 1…9 / 0** | Move window to workspace without following |
+| **Super + Shift + 1…9 / 0** | Move window to workspace and switch there |
+| **Super + Shift + Alt + 1…9 / 0** | Move window to workspace and stay on the current workspace |
 | **Super + Shift + Alt + Arrow** | Move workspace to directional monitor |
 | **Super + Arrow** | Move focus to window in direction |
 | **Super + Shift + Arrow** | Move focused window in direction |
@@ -87,11 +87,11 @@ System utilities use the **Super + Ctrl** family where configured.
 | **Super + Ctrl + A** | Audio and brightness controls |
 | **Super + Ctrl + B** | Bluetooth controls |
 | **Super + Ctrl + W** | Wi-Fi controller |
-| **Super + Ctrl + T** | Activity monitor — btop |
+| **Super + Ctrl + T** | System monitor — btop, htop, or top fallback |
 | **Super + Ctrl + C** | Screenshot |
 | **Super + Ctrl + V** | Clipboard manager |
 | **Super + Ctrl + N** | Toggle night light |
-| **Super + Ctrl + Shift + L** | Lock computer (alternate binding) |
+| **Super + Ctrl + Shift + L** | Lock with gtklock (swaylock fallback, alternate binding) |
 | **Ctrl + Alt + I** | IP / network information |
 | **Ctrl + Alt + V** | Audio and brightness controls |
 | **Ctrl + Alt + W** | Wi-Fi controller |
@@ -104,7 +104,7 @@ System utilities use the **Super + Ctrl** family where configured.
 | --- | --- |
 | **Ctrl + Alt + R** | Reload Sway configuration |
 | **Ctrl + Alt + E** | Exit Sway / log out |
-| **Ctrl + Alt + L** | Lock computer |
+| **Ctrl + Alt + L** | Lock with gtklock (swaylock fallback) |
 | **Ctrl + Alt + P** | Open power menu |
 
 ---
@@ -240,7 +240,7 @@ The installer also configures these shortcuts when it sets up an active GNOME se
 | **Super + F** | Toggle fullscreen |
 | **Super + Left / Right** | Switch workspace left / right |
 | **Super + Shift + Left / Right** | Move window to workspace left / right |
-| **Ctrl + Alt + L** | Lock screen |
+| **Ctrl + Alt + L** | GNOME's native lock screen |
 
 ---
 
@@ -255,7 +255,7 @@ The installer also configures these shortcuts when it sets up an active GNOME se
 | **Volume** | Open volume/brightness menu | Toggle mute | Adjust volume by 5% |
 | **Brightness** | Open volume/brightness menu | — | Adjust brightness by 5% |
 | **Clipboard** | Open clipboard manager | Clear clipboard history | — |
-| **RAM / Disk** | Open btop | — | — |
+| **RAM / Disk** | Open system monitor — btop, htop, or top fallback | — | — |
 | **Updates** | Show read-only package-update information | — | — |
 | **Power** | Open power menu | — | — |
 
@@ -270,6 +270,11 @@ The Wi-Fi/network bar provides separate interface slots. Clicking a Wi-Fi slot o
 | `sway/.config/sway/scripts/launch-app.sh` | Application launcher and fallback selection |
 | `sway/.local/bin/setup-neovim.sh` | Ensure a LazyVim-compatible Neovim version and back up existing Neovim data before setting up the starter config; use `--launch` to open it after setup |
 | `sway/.config/sway/scripts/close-all-windows.sh` | Close all application windows without logging out |
+| `sway/.local/bin/lock-screen.sh` | Start gtklock with the current Sway wallpaper, or use swaylock with a wallpaper fallback |
+| `sway/.local/bin/start-swayidle.sh` | Keep the current Sway session's idle and pre-sleep lock hooks active across config reloads |
+| `sway/.local/bin/setup-gtklock.sh` | Create Adwaita Dark, clock/date, and CSS defaults without overwriting existing gtklock settings |
+| `sway/.local/bin/toggle-wifi-radio.sh` | Toggle NetworkManager Wi-Fi radio safely from the hardware key |
+| `sway/.local/bin/system-monitor.sh` | Open btop, htop, or top, whichever is installed |
 | `sway/.config/sway/scripts/power-menu.sh` | System / power menu |
 | `sway/.config/sway/scripts/key-help-wofi.sh` | Searchable keybinding help |
 | `sway/.config/sway/scripts/toggle-night-light.sh` | Toggle night light |

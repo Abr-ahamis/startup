@@ -16,6 +16,14 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 grub_test_tmp="$(mktemp -d)"
 trap 'rm -rf -- "$grub_test_tmp"' EXIT
 run_as_root() { "$@"; }
+mkdir -p "$grub_test_tmp/system-bin"
+touch "$grub_test_tmp/system-bin/startup-test-admin-command" "$grub_test_tmp/system-bin/startup-test-grub-command"
+chmod +x "$grub_test_tmp/system-bin/"*
+PACKAGE_SYSTEM_COMMAND_DIRS="$grub_test_tmp/system-bin"
+GRUB_SYSTEM_COMMAND_DIRS="$grub_test_tmp/system-bin"
+[[ "$(package_command_path startup-test-admin-command)" == "$grub_test_tmp/system-bin/startup-test-admin-command" ]] || fail 'package command lookup must search standard system command directories'
+[[ "$(grub_command_path startup-test-grub-command)" == "$grub_test_tmp/system-bin/startup-test-grub-command" ]] || fail 'GRUB command lookup must search standard system command directories'
+unset PACKAGE_SYSTEM_COMMAND_DIRS GRUB_SYSTEM_COMMAND_DIRS
 grub_prepare_theme_parent "$grub_test_tmp/boot/grub/themes/startup" || fail 'GRUB theme parent could not be created'
 [[ -d "$grub_test_tmp/boot/grub/themes" ]] || fail 'missing GRUB themes parent was not created'
 
@@ -67,7 +75,12 @@ grep -q '^\[colors-dark\]$' "$SCRIPT_DIR/sway/.config/foot/foot.ini" || fail 'Fo
 if grep -q '^\[colors\]$' "$SCRIPT_DIR/sway/.config/foot/foot.ini"; then
   fail 'Foot config still uses deprecated [colors]'
 fi
-grep -q '^bindsym Ctrl+Alt+Delete kill$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+Delete must close the focused Sway window directly'
-grep -q '"Ctrl + Alt + Delete|Close focused window"' "$SCRIPT_DIR/sway/.config/sway/scripts/key-help-wofi.sh" || fail 'key help does not describe the close-window shortcut'
+grep -q '^bindsym Ctrl+Alt+Delete exec \$close_all$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+Delete must invoke the close-all-windows helper'
+grep -q '"Ctrl + Alt + Delete|Close all application windows"' "$SCRIPT_DIR/sway/.config/sway/scripts/key-help-wofi.sh" || fail 'key help does not describe close-all behavior'
+grep -q '^bindsym Ctrl+Alt+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+L must invoke the lock helper'
+grep -q '^bindsym \$mod+Ctrl+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Super+Ctrl+L must invoke the lock helper'
+grep -q 'timeout 1800 .*lock-screen.sh' "$SCRIPT_DIR/sway/.local/bin/start-swayidle.sh" || fail 'Sway idle configuration must lock after inactivity'
+grep -q 'before-sleep .*lock-screen.sh' "$SCRIPT_DIR/sway/.local/bin/start-swayidle.sh" || fail 'Sway idle configuration must lock before sleep'
+grep -q 'swaymsg -t get_tree' "$SCRIPT_DIR/sway/.config/sway/scripts/close-all-windows.sh" || fail 'close-all helper must enumerate the Sway tree'
 
 printf 'Regression checks passed.\n'

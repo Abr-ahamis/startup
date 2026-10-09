@@ -95,7 +95,7 @@ bindsym $mod+Shift+o exec $launcher obsidian
 # Existing utility menus
 bindsym Ctrl+Alt+r reload
 bindsym Ctrl+Alt+e exit
-bindsym Ctrl+Alt+l exec swaylock -f -c $lockcolor
+bindsym Ctrl+Alt+l exec ~/.local/bin/lock-screen.sh
 bindsym Ctrl+Alt+p exec bash -lc "$HOME/.config/sway/scripts/power-menu.sh;"
 bindsym Ctrl+Alt+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
 bindsym Ctrl+Alt+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
@@ -103,14 +103,14 @@ bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_me
 bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 
 # System controls
-bindsym $mod+Ctrl+l exec swaylock --daemonize --color 000000
+bindsym $mod+Ctrl+l exec ~/.local/bin/lock-screen.sh
 # Also accept Shift+L for keyboards or launchers that report the capital keysym.
-bindsym $mod+Ctrl+Shift+l exec swaylock --daemonize --color 000000
+bindsym $mod+Ctrl+Shift+l exec ~/.local/bin/lock-screen.sh
 bindsym $mod+Ctrl+a exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 bindsym $mod+Ctrl+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
 bindsym $mod+Ctrl+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
 bindsym Shift+Ctrl+p exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
-bindsym $mod+Ctrl+t exec foot btop
+bindsym $mod+Ctrl+t exec ~/.local/bin/system-monitor.sh
 bindsym $mod+Ctrl+c exec $screenshot
 bindsym $mod+Ctrl+Delete exec swaymsg 'output * dpms off'
 bindsym $mod+Ctrl+n exec $night_light
@@ -230,16 +230,16 @@ bindsym $mod+8 workspace $ws8
 bindsym $mod+9 workspace $ws9
 bindsym $mod+0 workspace $ws10
 
-bindsym $mod+Shift+1 move container to workspace $ws1
-bindsym $mod+Shift+2 move container to workspace $ws2
-bindsym $mod+Shift+3 move container to workspace $ws3
-bindsym $mod+Shift+4 move container to workspace $ws4
-bindsym $mod+Shift+5 move container to workspace $ws5
-bindsym $mod+Shift+6 move container to workspace $ws6
-bindsym $mod+Shift+7 move container to workspace $ws7
-bindsym $mod+Shift+8 move container to workspace $ws8
-bindsym $mod+Shift+9 move container to workspace $ws9
-bindsym $mod+Shift+0 move container to workspace $ws10
+bindsym $mod+Shift+1 move container to workspace $ws1, workspace $ws1
+bindsym $mod+Shift+2 move container to workspace $ws2, workspace $ws2
+bindsym $mod+Shift+3 move container to workspace $ws3, workspace $ws3
+bindsym $mod+Shift+4 move container to workspace $ws4, workspace $ws4
+bindsym $mod+Shift+5 move container to workspace $ws5, workspace $ws5
+bindsym $mod+Shift+6 move container to workspace $ws6, workspace $ws6
+bindsym $mod+Shift+7 move container to workspace $ws7, workspace $ws7
+bindsym $mod+Shift+8 move container to workspace $ws8, workspace $ws8
+bindsym $mod+Shift+9 move container to workspace $ws9, workspace $ws9
+bindsym $mod+Shift+0 move container to workspace $ws10, workspace $ws10
 
 bindsym $mod+Shift+$alt+1 move container to workspace $ws1
 bindsym $mod+Shift+$alt+2 move container to workspace $ws2
@@ -291,13 +291,10 @@ bar {
 exec_always ~/.local/bin/startup-session.sh
 
 input type:keyboard xkb_numlock enabled
-bindsym XF86RFKill exec nmcli radio wifi toggle
+bindsym XF86RFKill exec ~/.local/bin/toggle-wifi-radio.sh
 
 # Don't suspend when the laptop lid is closed
-exec swayidle -w \
-    timeout 1800 'swaylock -f -c $lockcolor' \
-    timeout 3600 'systemctl suspend' \
-    before-sleep 'swaylock -f -c $lockcolor'
+exec_always --no-startup-id ~/.local/bin/start-swayidle.sh
 
 # Ignore the laptop lid switch
 bindswitch --reload --locked lid:off exec true

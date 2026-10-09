@@ -36,6 +36,24 @@ package_expected_command() {
     gnome-keyring) echo gnome-keyring-daemon;; grub-customizer) echo grub-customizer;; libsecret-tools) echo secret-tool;; gnupg) echo gpg;; apparmor) echo aa-status;; bubblewrap) echo bwrap;;
   esac
 }
+# Installer sessions often run with a desktop user's PATH, which omits the
+# administrative sbin directories. Resolve installed system tools there too.
+package_command_path() {
+  local command_name="$1" directory candidate
+  local search_dirs="${PACKAGE_SYSTEM_COMMAND_DIRS:-/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin:/usr/libexec:/usr/libexec/bluetooth:/usr/lib/bluetooth}"
+  if [[ "$command_name" == /* ]]; then
+    [[ -x "$command_name" ]] && { printf '%s\n' "$command_name"; return 0; }
+    return 1
+  fi
+  candidate="$(command -v -- "$command_name" 2>/dev/null)" && { printf '%s\n' "$candidate"; return 0; }
+  local IFS=:
+  for directory in $search_dirs; do
+    [[ -x "$directory/$command_name" && ! -d "$directory/$command_name" ]] || continue
+    printf '%s\n' "$directory/$command_name"
+    return 0
+  done
+  return 1
+}
 # Check 1: package-database installed state.  Check 2 (below) is distinct.
 package_installed() { case "$PKG_MANAGER" in apt) [[ "$(dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null)" == installed ]];; pacman) pacman -Qq "$1" >/dev/null 2>&1;; *) return 1;; esac; }
 package_verify() {
@@ -48,18 +66,35 @@ package_verify() {
     pacman) pacman -Qi "$package" >/dev/null 2>&1 || { PACKAGE_VERIFY_REASON='pacman -Qi failed'; record_verification "$package" FAILED "$PACKAGE_VERIFY_REASON"; return 1; };; esac
   local expected_command
   expected_command="$(package_expected_command "$package" || true)"
-  if [[ -n "$expected_command" ]] && ! { [[ "$expected_command" == /* && -x "$expected_command" ]] || command -v "$expected_command" >/dev/null 2>&1; }; then
+  if [[ -n "$expected_command" ]] && ! package_command_path "$expected_command" >/dev/null; then
     PACKAGE_VERIFY_REASON="database is installed but expected executable is absent: $expected_command"; record_verification "$package" FAILED "$PACKAGE_VERIFY_REASON"; return 1
   fi
   PACKAGE_VERIFY_REASON="version=$version${expected_command:+ command=$expected_command}"; record_verification "$package" OK "$PACKAGE_VERIFY_REASON"
 }
 package_available() { case "$PKG_MANAGER" in apt) apt-cache show "$1" >/dev/null 2>&1;; pacman) pacman -Si "$1" >/dev/null 2>&1;; esac; }
+install_optional_gtklock() {
+  if package_installed gtklock && command -v gtklock >/dev/null 2>&1; then
+    info 'Optional gtklock is already installed; Sway will use it for lock screens.'
+    return 0
+  fi
+  if ! package_available gtklock; then
+    info 'gtklock is unavailable in the enabled repositories; Sway will keep using swaylock.'
+    return 0
+  fi
+  info 'Installing optional gtklock for the configured Sway lock screen.'
+  if package_install_batch gtklock && package_installed gtklock && command -v gtklock >/dev/null 2>&1; then
+    ok_indented 'Optional gtklock installed; swaylock remains available as a fallback.'
+  else
+    warn 'Optional gtklock installation failed; swaylock remains available as a fallback.'
+  fi
+  return 0
+}
 package_done() { local version; version="$(package_get_version "$1")"; ok_indented "verified: $1${version:+ ($version)}"; }
 package_name_valid() { [[ "$1" =~ ^[[:alnum:]][[:alnum:]+.-]*$ ]]; }
 package_name_approved() {
   local package="$1" feature candidate
   case "$package" in
-    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|jq|sudo) return 0;;
+    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|gtklock|jq|sudo) return 0;;
   esac
   for feature in core network secret portal audio clipboard bluetooth python notify; do
     for candidate in $(package_for "$feature"); do
@@ -147,5 +182,7 @@ run_packages() {
     fi
   fi
   for pkg in "${REQUIRED_PACKAGES[@]}"; do if package_verify "$pkg"; then package_done "$pkg"; else FAILED_REQUIRED_PACKAGES+=("$pkg"); required_failure "Required package verification failed: $pkg ($PACKAGE_VERIFY_REASON)"; fi; done
-  (( ${#FAILED_REQUIRED_PACKAGES[@]} == 0 )) || return 1; ok_indented "All required packages independently verified. [${#REQUIRED_PACKAGES[@]} components]"
+  (( ${#FAILED_REQUIRED_PACKAGES[@]} == 0 )) || return 1
+  install_optional_gtklock
+  ok_indented "All required packages independently verified. [${#REQUIRED_PACKAGES[@]} components]"
 }

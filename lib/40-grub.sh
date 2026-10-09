@@ -60,11 +60,25 @@ grub_verify_theme() {
   grep -qxF "GRUB_THEME=\"$theme\"" /etc/default/grub 2>/dev/null || return 1
   diff -qr --no-dereference "$SCRIPT_DIR/grub" "$dest" >/dev/null 2>&1
 }
+grub_command_path() {
+  local command_name="$1" directory candidate
+  local search_dirs="${GRUB_SYSTEM_COMMAND_DIRS:-/usr/local/sbin:/usr/sbin:/sbin:/usr/local/bin:/usr/bin:/bin}"
+  candidate="$(command -v -- "$command_name" 2>/dev/null)" && { printf '%s\n' "$candidate"; return 0; }
+  local IFS=:
+  for directory in $search_dirs; do
+    [[ -x "$directory/$command_name" && ! -d "$directory/$command_name" ]] || continue
+    printf '%s\n' "$directory/$command_name"
+    return 0
+  done
+  return 1
+}
 grub_regenerate() {
-  local before after=/boot/grub/grub.cfg
+  local before after=/boot/grub/grub.cfg generator
   before="$(stat -c '%Y:%s' "$after" 2>/dev/null || printf missing)"
-  if command -v update-grub >/dev/null 2>&1; then run_package_command 'update-grub' run_as_root timeout --foreground 5m update-grub
-  elif command -v grub-mkconfig >/dev/null 2>&1; then run_package_command 'grub-mkconfig' run_as_root timeout --foreground 5m grub-mkconfig -o "$after"
+  if generator="$(grub_command_path update-grub)"; then
+    run_package_command 'update-grub' run_as_root timeout --foreground 5m "$generator"
+  elif generator="$(grub_command_path grub-mkconfig)"; then
+    run_package_command 'grub-mkconfig' run_as_root timeout --foreground 5m "$generator" -o "$after"
   else return 1; fi
   [[ -s "$after" ]] || return 1
   # A same-second identical size result is allowed: generators can produce
