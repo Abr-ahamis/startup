@@ -85,8 +85,12 @@ grep -q '^bindsym \$mod+Ctrl+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/s
 grep -q '^bindsym \$mod+Shift+p exec \$launcher keepassxc$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Super+Shift+P must launch KeePassXC in Sway'
 grep -q '^bindsym Ctrl+Alt+e exec ~/.local/bin/logout-session.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+E must use GDM-aware logout'
 grep -q 'Logout)' "$SCRIPT_DIR/sway/.config/sway/scripts/power-menu.sh" && grep -q 'logout-session.sh' "$SCRIPT_DIR/sway/.config/sway/scripts/power-menu.sh" || fail 'Sway power menu logout must use the GDM-aware helper'
-grep -q 'loginctl activate' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'TTY-launched Sway logout must activate the GDM greeter before ending the session'
-grep -q 'loginctl terminate-session' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'Sway logout must terminate the login session instead of returning to its shell'
+grep -q 'exec swaymsg exit' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'GDM-launched Sway logout must return to the GDM greeter'
+grep -q 'session_service.*== gdm' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'Sway logout must only exit directly when the session belongs to GDM'
+if grep -Eq 'pkexec|sudo[[:space:]]|loginctl[[:space:]]+(activate|terminate-session)' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh"; then
+  fail 'Sway logout must not request admin authorization or terminate a system session'
+fi
+grep -q 'started from a terminal, not GDM' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'TTY-launched Sway must explain why password-free logout to GDM is unavailable'
 grep -q 'logout-session.sh' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/power_menu.sh" || fail 'terminal power menu must share the GDM-aware Sway logout helper'
 if grep -q 'pkill -KILL -u' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/power_menu.sh"; then
   fail 'terminal power menu must not kill all user processes to log out'

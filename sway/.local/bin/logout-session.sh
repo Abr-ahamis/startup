@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# End the current Sway login session only after the GDM greeter is available.
+# End a Sway session started by GDM so GDM can show its login screen again.
+# Never request administrator authorization from this user-facing action.
 set -euo pipefail
 
 notify_user() {
@@ -17,7 +18,9 @@ if [[ -z "${SWAYSOCK:-}" || -z "${WAYLAND_DISPLAY:-}" ]] \
 fi
 
 session_id="${XDG_SESSION_ID:-}"
-if [[ -z "$session_id" ]] || ! loginctl show-session "$session_id" -p Name --value 2>/dev/null | grep -qxF "${USER:-$(id -un)}"; then
+if [[ -z "$session_id" ]] \
+    || ! loginctl show-session "$session_id" -p Name --value 2>/dev/null \
+        | grep -qxF "${USER:-$(id -un)}"; then
     notify_user 'Logout was cancelled: could not identify this login session.'
     exit 1
 fi
@@ -32,45 +35,14 @@ case "$display_manager" in
 esac
 
 session_service="$(loginctl show-session "$session_id" -p Service --value 2>/dev/null || true)"
-if [[ "$session_service" == gdm* ]] && systemctl is-active --quiet display-manager.service; then
-    # GDM started this session and will restore its greeter when the session ends.
+if [[ "$session_service" == gdm* ]]; then
+    # GDM owns this session and returns to its greeter when Sway exits.
     exec swaymsg exit
 fi
 
-# Sway can be launched directly from a TTY, outside GDM. In that case, obtain
-# authorization before switching VTs, start GDM, activate its greeter, and
-# terminate the TTY session as one privileged operation. The fixed command
-# body receives only the validated logind session ID as an argument.
-command -v pkexec >/dev/null 2>&1 || {
-    notify_user 'Logout was cancelled: authorization is needed to start GDM from this TTY session.'
-    exit 1
-}
-[[ "$session_id" =~ ^[[:alnum:]_.:-]+$ ]] || {
-    notify_user 'Logout was cancelled: the login session ID is invalid.'
-    exit 1
-}
-
-read -r -d '' root_logout_command <<'ROOT_COMMAND' || true
-session_id="$1"
-systemctl start display-manager.service || exit 1
-i=0
-while [ "$i" -lt 40 ]; do
-    for candidate in $(loginctl list-sessions --no-legend --no-pager | awk '$6 == "greeter" {print $1}'); do
-        greeter_class="$(loginctl show-session "$candidate" -p Class --value 2>/dev/null || true)"
-        greeter_service="$(loginctl show-session "$candidate" -p Service --value 2>/dev/null || true)"
-        if [ "$greeter_class" = greeter ] && [ "${greeter_service#gdm}" != "$greeter_service" ]; then
-            loginctl activate "$candidate" || exit 1
-            loginctl terminate-session "$session_id"
-            exit $?
-        fi
-    done
-    sleep 0.5
-    i=$((i + 1))
-done
+# A Sway session launched directly from a TTY is not managed by GDM. Starting
+# the system display manager or terminating the logind session needs elevated
+# privileges, so fail safely instead of prompting at logout or returning the
+# user to an unexpected shell. Starting Sway from GDM makes logout passwordless.
+notify_user 'This Sway session was started from a terminal, not GDM. It is still running. Log out of this session, then choose Sway from the GDM session menu to enable password-free logout to the GDM login screen.'
 exit 1
-ROOT_COMMAND
-
-if ! pkexec /usr/bin/sh -c "$root_logout_command" startup-gdm-logout "$session_id"; then
-    notify_user 'Logout was cancelled: GDM could not be made ready. Sway is still running.'
-    exit 1
-fi
