@@ -13,6 +13,10 @@ for spec in 'arch|arch|pacman' 'debian|debian|apt' 'ubuntu|debian|apt' 'kali|deb
   NEO_OS_RELEASE_FILE="$file" detect_distro
   [[ "$DISTRO_ID" == "$id" && "$DISTRO_FAMILY" == "$family" && "$PKG_MANAGER" == "$manager" ]]
   package_for network >/dev/null
+  core_packages="$(package_for core)"
+  [[ " $core_packages " == *' gtklock '* ]] || { printf 'GTKlock missing from %s core packages\n' "$id" >&2; exit 1; }
+  [[ "$(package_for keepassxc)" == keepassxc ]] || { printf 'KeePassXC package mapping failed for %s\n' "$id" >&2; exit 1; }
+  package_name_approved keepassxc || { printf 'KeePassXC package rejected for %s\n' "$id" >&2; exit 1; }
   collect_required_packages
   [[ " ${REQUIRED_PACKAGES[*]} " == *' sway '* ]]
   [[ "$(printf '%s\n' "${REQUIRED_PACKAGES[@]}" | sort | uniq -d | wc -l)" -eq 0 ]]

@@ -11,6 +11,8 @@ configuration, services, security settings, and boot artwork.
 
 - [GTK lock screen setup](docs/gtklock.md): gtklock on Sway, wallpaper
   selection, sleep locking, configuration, and GNOME/GDM scope.
+- [KeePassXC](docs/keepassxc.md): distro-specific installation, Ubuntu PPA,
+  optional Snap fallback, and the shared Sway/GNOME shortcut.
 - [Keybindings](KEYBINDINGS.md): configured Sway and GNOME shortcuts.
 - [Docker tools](scr/Docker/README.md): container utilities and examples.
 

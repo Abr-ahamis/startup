@@ -16,14 +16,15 @@ package_for() {
     debian:git_libsecret) echo build-essential pkg-config libsecret-1-dev;; arch:git_libsecret) echo base-devel pkgconf libsecret;;
     debian:portal|arch:portal) echo xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk;; debian:audio|arch:audio) echo pipewire pipewire-pulse wireplumber;;
     debian:clipboard|arch:clipboard) echo cliphist;; debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:core) echo sway swaybg swayidle swaylock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pulseaudio-utils pamixer wl-clipboard cliphist network-manager network-manager-gnome bluez blueman rfkill mate-polkit xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-user-session brightnessctl dunst libnotify-bin fontconfig jq curl gnome-keyring grub-customizer timeshift libsecret-1-0 libsecret-tools seahorse gnupg age apparmor bubblewrap cryptsetup build-essential pkg-config libsecret-1-dev libpam-gnome-keyring git grub2-common neovim;;
-    arch:core) echo sway swaybg swayidle swaylock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber libpulse pamixer wl-clipboard cliphist networkmanager network-manager-applet bluez bluez-utils blueman rfkill polkit-gnome xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus brightnessctl dunst libnotify fontconfig jq curl gnome-keyring timeshift libsecret seahorse gnupg age apparmor bubblewrap cryptsetup base-devel pkgconf git neovim;;
+    debian:keepassxc|arch:keepassxc) echo keepassxc;;
+    debian:core) echo sway swaybg swayidle swaylock gtklock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pulseaudio-utils pamixer wl-clipboard cliphist network-manager network-manager-gnome bluez blueman rfkill mate-polkit xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-user-session brightnessctl dunst libnotify-bin fontconfig jq curl gnome-keyring grub-customizer timeshift libsecret-1-0 libsecret-tools seahorse gnupg age apparmor bubblewrap cryptsetup build-essential pkg-config libsecret-1-dev libpam-gnome-keyring git grub2-common neovim;;
+    arch:core) echo sway swaybg swayidle swaylock gtklock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber libpulse pamixer wl-clipboard cliphist networkmanager network-manager-applet bluez bluez-utils blueman rfkill polkit-gnome xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus brightnessctl dunst libnotify fontconfig jq curl gnome-keyring timeshift libsecret seahorse gnupg age apparmor bubblewrap cryptsetup base-devel pkgconf git neovim;;
     *) return 1;; esac
 }
 package_get_version() { case "$PKG_MANAGER" in apt) dpkg-query -W -f='${Version}' "$1" 2>/dev/null;; pacman) pacman -Q "$1" 2>/dev/null | awk '{print $2}';; esac; }
 package_expected_command() {
   case "$1" in
-    sway|swaybg|swayidle|swaylock|i3blocks|wofi|foot|dex|gammastep|flameshot|grim|slurp|pipewire|pipewire-pulse|wireplumber|pamixer|cliphist|rfkill|brightnessctl|dunst|jq|curl|timeshift|seahorse|age|cryptsetup|git|python3|pkg-config) printf '%s\n' "$1" ;;
+    sway|swaybg|swayidle|swaylock|gtklock|keepassxc|i3blocks|wofi|foot|dex|gammastep|flameshot|grim|slurp|pipewire|pipewire-pulse|wireplumber|pamixer|cliphist|rfkill|brightnessctl|dunst|jq|curl|timeshift|seahorse|age|cryptsetup|git|python3|pkg-config) printf '%s\n' "$1" ;;
     neovim) printf '%s\n' nvim ;;
     pulseaudio-utils|libpulse) printf '%s\n' pactl ;;
     mate-polkit) printf '%s\n' /usr/libexec/polkit-mate-authentication-agent-1 ;;
@@ -72,29 +73,12 @@ package_verify() {
   PACKAGE_VERIFY_REASON="version=$version${expected_command:+ command=$expected_command}"; record_verification "$package" OK "$PACKAGE_VERIFY_REASON"
 }
 package_available() { case "$PKG_MANAGER" in apt) apt-cache show "$1" >/dev/null 2>&1;; pacman) pacman -Si "$1" >/dev/null 2>&1;; esac; }
-install_optional_gtklock() {
-  if package_installed gtklock && command -v gtklock >/dev/null 2>&1; then
-    info 'Optional gtklock is already installed; Sway will use it for lock screens.'
-    return 0
-  fi
-  if ! package_available gtklock; then
-    info 'gtklock is unavailable in the enabled repositories; Sway will keep using swaylock.'
-    return 0
-  fi
-  info 'Installing optional gtklock for the configured Sway lock screen.'
-  if package_install_batch gtklock && package_installed gtklock && command -v gtklock >/dev/null 2>&1; then
-    ok_indented 'Optional gtklock installed; swaylock remains available as a fallback.'
-  else
-    warn 'Optional gtklock installation failed; swaylock remains available as a fallback.'
-  fi
-  return 0
-}
 package_done() { local version; version="$(package_get_version "$1")"; ok_indented "verified: $1${version:+ ($version)}"; }
 package_name_valid() { [[ "$1" =~ ^[[:alnum:]][[:alnum:]+.-]*$ ]]; }
 package_name_approved() {
   local package="$1" feature candidate
   case "$package" in
-    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|gtklock|jq|sudo) return 0;;
+    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|gtklock|jq|keepassxc|snap|software-properties-common|sudo) return 0;;
   esac
   for feature in core network secret portal audio clipboard bluetooth python notify; do
     for candidate in $(package_for "$feature"); do
@@ -172,8 +156,69 @@ remove_packages() { (( $# )) || return 0; case "$PKG_MANAGER" in apt) run_packag
 collect_required_packages() { local feature pkg list; local -A seen=(); REQUIRED_PACKAGES=(); for feature in core network secret portal audio clipboard bluetooth python notify; do list="$(package_for "$feature")" || { required_failure "No package mapping for required feature: $feature"; continue; }; for pkg in $list; do [[ -n "${seen[$pkg]:-}" ]] && continue; seen[$pkg]=1; REQUIRED_PACKAGES+=("$pkg"); done; done; }
 install_feature() { local list; list="$(package_for "$1")" || return 1; local -a p=(); read -r -a p <<<"$list"; install_packages "${p[@]}"; }
 backup_package_selections() { case "$PKG_MANAGER" in apt) run_as_root sh -c 'dpkg --get-selections > "$1"' sh "$SETUP_BACKUP_DIR/dpkg-selections.txt" || warn 'Could not back up dpkg selections';; pacman) run_as_root sh -c 'pacman -Qqe > "$1"' sh "$SETUP_BACKUP_DIR/pacman-explicit.txt" || warn 'Could not back up pacman selections';; esac; }
+ensure_ubuntu_keepassxc_ppa() {
+  [[ "$DISTRO_ID" == ubuntu ]] || return 0
+  if grep -Rqs 'phoerious/keepassxc' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null; then
+    return 0
+  fi
+  if ! command -v add-apt-repository >/dev/null 2>&1; then
+    package_install_batch software-properties-common || {
+      required_failure 'Cannot install software-properties-common to configure the KeePassXC Ubuntu PPA.'
+      return 1
+    }
+  fi
+  run_package_command 'add KeePassXC Ubuntu PPA' run_as_root timeout --foreground 5m add-apt-repository -y ppa:phoerious/keepassxc || {
+    required_failure 'Could not add ppa:phoerious/keepassxc on Ubuntu.'
+    return 1
+  }
+  refresh_package_metadata || {
+    required_failure 'APT metadata refresh failed after adding the KeePassXC PPA.'
+    return 1
+  }
+}
+keepassxc_snap_installed() {
+  local snap_list
+  command -v snap >/dev/null 2>&1 || return 1
+  snap_list="$(run_as_root snap list keepassxc 2>/dev/null || true)"
+  [[ -n "$snap_list" ]] || return 1
+  [[ -x /snap/bin/keepassxc ]] || command -v keepassxc >/dev/null 2>&1
+}
+install_keepassxc() {
+  local package snap_list
+  package="$(package_for keepassxc)" || { required_failure "No KeePassXC package mapping for $DISTRO_FAMILY."; return 1; }
+  if keepassxc_snap_installed; then
+    ok_indented 'KeePassXC snap is already installed and its launcher is available.'
+    return 0
+  fi
+  if package_installed "$package"; then
+    package_verify "$package" && return 0
+  fi
+  if package_available "$package"; then
+    install_package "$package" || { required_failure 'KeePassXC package installation failed.'; return 1; }
+    package_verify "$package" || { required_failure "KeePassXC verification failed: $PACKAGE_VERIFY_REASON"; return 1; }
+    ok_indented "KeePassXC installed and verified from $PKG_MANAGER repositories."
+    return 0
+  fi
+  if command -v snap >/dev/null 2>&1; then
+    snap_list="$(run_as_root snap list keepassxc 2>/dev/null || true)"
+    if [[ -n "$snap_list" ]]; then
+      required_failure 'KeePassXC snap is installed but its launcher is unavailable.'
+      return 1
+    fi
+    info 'Native KeePassXC package is unavailable; installing the official Snap package.'
+    run_package_command 'snap install keepassxc' run_as_root timeout --foreground 20m snap install keepassxc || {
+      required_failure 'KeePassXC Snap installation failed.'
+      return 1
+    }
+    keepassxc_snap_installed || { required_failure 'KeePassXC snap installation could not be verified or its launcher is unavailable.'; return 1; }
+    ok_indented 'KeePassXC snap installed and verified.'
+    return 0
+  fi
+  required_failure 'KeePassXC is unavailable from native repositories and Snap is not installed.'
+  return 1
+}
 run_packages() {
-  local pkg; cleanup_previous_package_process; run_as_root install -d -m 700 "$SETUP_BACKUP_DIR" || { required_failure "Cannot create backup directory: $SETUP_BACKUP_DIR"; return 1; }; backup_package_selections; refresh_package_metadata || { required_failure 'APT metadata refresh failed; package availability cannot be trusted'; return 1; }; collect_required_packages; MISSING_PACKAGES=() INVALID_PACKAGES=() FAILED_REQUIRED_PACKAGES=()
+  local pkg; cleanup_previous_package_process; run_as_root install -d -m 700 "$SETUP_BACKUP_DIR" || { required_failure "Cannot create backup directory: $SETUP_BACKUP_DIR"; return 1; }; backup_package_selections; refresh_package_metadata || { required_failure 'APT metadata refresh failed; package availability cannot be trusted'; return 1; }; ensure_ubuntu_keepassxc_ppa || return 1; collect_required_packages; MISSING_PACKAGES=() INVALID_PACKAGES=() FAILED_REQUIRED_PACKAGES=()
   for pkg in "${REQUIRED_PACKAGES[@]}"; do if package_verify "$pkg"; then package_done "$pkg"; elif package_available "$pkg"; then MISSING_PACKAGES+=("$pkg"); [[ "$PACKAGE_VERIFY_REASON" != 'package database does not report installed' ]] && INVALID_PACKAGES+=("$pkg"); else FAILED_REQUIRED_PACKAGES+=("$pkg"); required_failure "Required package unavailable in configured repositories: $pkg"; fi; done
   if (( ${#MISSING_PACKAGES[@]} )); then
     info "Installing ${#MISSING_PACKAGES[@]} missing/invalid package(s) sequentially with $PKG_MANAGER."
@@ -183,6 +228,6 @@ run_packages() {
   fi
   for pkg in "${REQUIRED_PACKAGES[@]}"; do if package_verify "$pkg"; then package_done "$pkg"; else FAILED_REQUIRED_PACKAGES+=("$pkg"); required_failure "Required package verification failed: $pkg ($PACKAGE_VERIFY_REASON)"; fi; done
   (( ${#FAILED_REQUIRED_PACKAGES[@]} == 0 )) || return 1
-  install_optional_gtklock
+  install_keepassxc || return 1
   ok_indented "All required packages independently verified. [${#REQUIRED_PACKAGES[@]} components]"
 }

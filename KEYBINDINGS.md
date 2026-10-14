@@ -14,7 +14,7 @@ This reference follows the Omarchy-style keybinding layout while documenting the
 | **Super + Alt + Space** | Application launcher |
 | **Super + D** | Application launcher |
 | **Super + Escape** | System / power menu |
-| **Super + Ctrl + L** | Lock with gtklock (swaylock fallback) |
+| **Super + Ctrl + L** | Lock Sway with GTKlock |
 | **Super + W** | Close focused window |
 | **Ctrl + Alt + Delete** | Close all application windows without logging out |
 | **Super + T** | Toggle window between tiling and floating |
@@ -91,7 +91,7 @@ System utilities use the **Super + Ctrl** family where configured.
 | **Super + Ctrl + C** | Screenshot |
 | **Super + Ctrl + V** | Clipboard manager |
 | **Super + Ctrl + N** | Toggle night light |
-| **Super + Ctrl + Shift + L** | Lock with gtklock (swaylock fallback, alternate binding) |
+| **Super + Ctrl + Shift + L** | Lock Sway with GTKlock (alternate binding) |
 | **Ctrl + Alt + I** | IP / network information |
 | **Ctrl + Alt + V** | Audio and brightness controls |
 | **Ctrl + Alt + W** | Wi-Fi controller |
@@ -104,7 +104,7 @@ System utilities use the **Super + Ctrl** family where configured.
 | --- | --- |
 | **Ctrl + Alt + R** | Reload Sway configuration |
 | **Ctrl + Alt + E** | Exit Sway / log out |
-| **Ctrl + Alt + L** | Lock with gtklock (swaylock fallback) |
+| **Ctrl + Alt + L** | Lock Sway with GTKlock |
 | **Ctrl + Alt + P** | Open power menu |
 
 ---
@@ -122,6 +122,7 @@ System utilities use the **Super + Ctrl** family where configured.
 | **Super + Shift + Alt + N** | Preferred GUI text editor |
 | **Super + Shift + C** | VS Code / VSCodium |
 | **Super + Shift + O** | Obsidian |
+| **Super + Shift + P** | KeePassXC password manager |
 | **Print** | Screenshot |
 | **Super + D / Space** | Application launcher |
 | **Super + K / Shift + F1** | Keybinding help |
@@ -140,6 +141,7 @@ The launcher uses the first installed program from each role.
 | **Text editor** | gnome-text-editor → gedit → mousepad |
 | **Code editor** | code → codium |
 | **Notes** | obsidian |
+| **Password manager** | keepassxc |
 | **Screenshot** | flameshot GUI → grim |
 | **Telegram** | `/opt/Telegram/Telegram` → telegram-desktop → Telegram |
 
@@ -233,6 +235,7 @@ The installer also configures these shortcuts when it sets up an active GNOME se
 | **Super + Shift + Alt + N** | Preferred GUI text editor |
 | **Super + Shift + S** | Screenshot |
 | **Super + Shift + C** | VS Code |
+| **Super + Shift + P** | KeePassXC password manager |
 | **Shift + F1** | Keybinding help |
 | **XF86RFKill** | Toggle Wi-Fi radio |
 | **Super + W** | Close focused window |
@@ -270,7 +273,7 @@ The Wi-Fi/network bar provides separate interface slots. Clicking a Wi-Fi slot o
 | `sway/.config/sway/scripts/launch-app.sh` | Application launcher and fallback selection |
 | `sway/.local/bin/setup-neovim.sh` | Ensure a LazyVim-compatible Neovim version and back up existing Neovim data before setting up the starter config; use `--launch` to open it after setup |
 | `sway/.config/sway/scripts/close-all-windows.sh` | Close all application windows without logging out |
-| `sway/.local/bin/lock-screen.sh` | Start gtklock with the current Sway wallpaper, or use swaylock with a wallpaper fallback |
+| `sway/.local/bin/lock-screen.sh` | Start GTKlock only inside the active Sway session, using the current Sway wallpaper |
 | `sway/.local/bin/start-swayidle.sh` | Keep the current Sway session's idle and pre-sleep lock hooks active across config reloads |
 | `sway/.local/bin/setup-gtklock.sh` | Create Adwaita Dark, clock/date, and CSS defaults without overwriting existing gtklock settings |
 | `sway/.local/bin/toggle-wifi-radio.sh` | Toggle NetworkManager Wi-Fi radio safely from the hardware key |

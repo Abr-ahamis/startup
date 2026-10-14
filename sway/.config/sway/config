@@ -91,6 +91,7 @@ bindsym $mod+Shift+$alt+n exec $editor
 bindsym Print exec $screenshot
 bindsym $mod+Shift+c exec $launcher code
 bindsym $mod+Shift+o exec $launcher obsidian
+bindsym $mod+Shift+p exec $launcher keepassxc
 
 # Existing utility menus
 bindsym Ctrl+Alt+r reload

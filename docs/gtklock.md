@@ -1,9 +1,10 @@
 # gtklock on Sway
 
-The installer configures gtklock as the Sway session lock screen when the
-package is available from the enabled repositories. It keeps `swaylock`
-installed and uses it as a fallback. gtklock is optional so systems without a
-package do not lose the existing lock behavior.
+The installer requires and verifies `gtklock` for the Sway lock screen. If the
+package is unavailable or cannot be installed from the enabled repositories,
+the package stage reports a required failure instead of silently configuring a
+different lock screen. `swaylock` may remain installed for other user choices,
+but this project's lock helper never launches it.
 
 ## What gets configured
 
@@ -11,6 +12,9 @@ package do not lose the existing lock behavior.
   `~/.local/bin/lock-screen.sh`.
 - Sway locks after 30 minutes idle and runs the same lock helper before sleep.
   This also covers suspend requests made by Sway's power menu and suspend key.
+- The helper first verifies that it is running inside an active Sway session.
+  Outside Sway it exits without launching a locker. GTKlock is not registered
+  with GNOME, GDM, GNOME autostart, or a global service.
 - The helper uses the image currently passed to `swaybg`. If it cannot find
   that image, it tries the project's installed `IMG1.jpg` / `IMG2.jpg`, then
   the first supported image in `~/Pictures`.
@@ -28,14 +32,9 @@ The lock helper, idle-hook manager, and defaults are
 
 ## Test and scope
 
-Log into a Sway session, then run `~/.local/bin/lock-screen.sh` or use a Sway
-lock shortcut. Test suspend and wake after confirming the manual lock works. The session must be
-Sway (or another compatible wlroots compositor); gtklock does not replace
-GNOME Shell's lock screen or GDM's pre-login screen. GNOME continues to use its
-own lock behavior. Reboot and shutdown screens are controlled by the boot and
-display-manager themes, not gtklock.
-
-If gtklock is unavailable or fails to install, the helper uses swaylock. The
-fallback still uses the selected wallpaper, but it does not provide gtklock's
-clock/date appearance. The installer does not change lid-close policy or the
-configured power actions.
+Log into a Sway session, then use a Sway lock shortcut to test the helper.
+Sway's existing `swayidle` process uses the same helper after 30 minutes and
+before sleep; its one-hour suspend timeout is preserved. GTKlock does not
+replace GNOME Shell's native lock screen or GDM's pre-login screen. The
+installer does not change the selected display manager, GNOME settings,
+lid-close policy, or configured power actions.

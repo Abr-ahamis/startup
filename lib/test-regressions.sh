@@ -49,6 +49,8 @@ prepare_foot_config_source || fail 'modern Foot config check failed'
 [[ "$FOOT_CONFIG_SOURCE" == "$SCRIPT_DIR/sway/.config/foot" ]] || fail 'modern Foot config was unnecessarily adapted'
 
 [[ "$(package_expected_command bluez)" == bluetoothd ]] || fail 'BlueZ must be verified by bluetoothd, not a distro-specific path'
+[[ "$(package_expected_command gtklock)" == gtklock ]] || fail 'GTKlock must be independently verified by its executable'
+[[ "$(package_expected_command keepassxc)" == keepassxc ]] || fail 'KeePassXC must be verified by its executable'
 
 theme='/boot/grub/themes/startup/theme.txt'
 grub_cfg_theme_matches "$theme" 'set theme=($root)/grub/themes/startup/theme.txt' || fail 'GRUB root-relative /boot theme reference was rejected'
@@ -79,8 +81,23 @@ grep -q '^bindsym Ctrl+Alt+Delete exec \$close_all$' "$SCRIPT_DIR/sway/.config/s
 grep -q '"Ctrl + Alt + Delete|Close all application windows"' "$SCRIPT_DIR/sway/.config/sway/scripts/key-help-wofi.sh" || fail 'key help does not describe close-all behavior'
 grep -q '^bindsym Ctrl+Alt+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+L must invoke the lock helper'
 grep -q '^bindsym \$mod+Ctrl+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Super+Ctrl+L must invoke the lock helper'
+grep -q '^bindsym \$mod+Shift+p exec \$launcher keepassxc$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Super+Shift+P must launch KeePassXC in Sway'
+grep -q 'keepassxc) launch_first keepassxc /snap/bin/keepassxc' "$SCRIPT_DIR/sway/.config/sway/scripts/launch-app.sh" || fail 'application launcher must support native and Snap KeePassXC commands'
+grep -q 'startup-keepassxc.*<Super><Shift>p.*KeePassXC password manager' "$SCRIPT_DIR/lib/95-gnome-keybindings.sh" || fail 'GNOME must receive the KeePassXC shortcut'
+grep -q 'Super + Shift + P|KeePassXC password manager' "$SCRIPT_DIR/sway/.config/sway/scripts/key-help-wofi.sh" || fail 'Sway key help must list KeePassXC'
 grep -q 'timeout 1800 .*lock-screen.sh' "$SCRIPT_DIR/sway/.local/bin/start-swayidle.sh" || fail 'Sway idle configuration must lock after inactivity'
 grep -q 'before-sleep .*lock-screen.sh' "$SCRIPT_DIR/sway/.local/bin/start-swayidle.sh" || fail 'Sway idle configuration must lock before sleep'
+grep -q 'SWAYSOCK' "$SCRIPT_DIR/sway/.local/bin/lock-screen.sh" || fail 'GTKlock helper must refuse to run outside a Sway session'
+grep -q 'swaymsg -t get_version' "$SCRIPT_DIR/sway/.local/bin/lock-screen.sh" || fail 'GTKlock helper must confirm the active compositor is Sway'
+grep -q 'exec gtklock ' "$SCRIPT_DIR/sway/.local/bin/lock-screen.sh" || fail 'Sway lock helper must launch GTKlock'
+if grep -Eq '(^|[[:space:]])(exec[[:space:]]+)?swaylock([[:space:]]|$)' "$SCRIPT_DIR/sway/.local/bin/lock-screen.sh"; then
+  fail 'Sway lock helper must not fall back to swaylock'
+fi
+grep -q 'debian:core) echo .*gtklock' "$SCRIPT_DIR/lib/20-packages.sh" || fail 'Debian-family installer package set must include GTKlock'
+grep -q 'arch:core) echo .*gtklock' "$SCRIPT_DIR/lib/20-packages.sh" || fail 'Arch installer package set must include GTKlock'
+if rg -l 'gtklock' "$SCRIPT_DIR/sway/.config/gnome" "$SCRIPT_DIR/sway/.config/autostart" "$SCRIPT_DIR/sway/.config/systemd" 2>/dev/null | grep -q .; then
+  fail 'GTKlock must not be wired into GNOME, autostart, or user service config'
+fi
 grep -q 'swaymsg -t get_tree' "$SCRIPT_DIR/sway/.config/sway/scripts/close-all-windows.sh" || fail 'close-all helper must enumerate the Sway tree'
 
 printf 'Regression checks passed.\n'

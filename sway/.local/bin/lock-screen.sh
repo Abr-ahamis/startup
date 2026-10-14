@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
-# Lock the current Sway session with gtklock when available, else swaylock.
+# Lock only an active Sway session with GTKlock. Never use this helper in GNOME.
 set -u
+
+if [[ -z "${SWAYSOCK:-}" || -z "${WAYLAND_DISPLAY:-}" ]] \
+    || ! command -v swaymsg >/dev/null 2>&1 \
+    || ! swaymsg -t get_version >/dev/null 2>&1; then
+    printf '%s\n' 'Refusing to start GTKlock: no active Sway session was detected.' >&2
+    exit 1
+fi
 
 uid="$(id -u)"
 home="${HOME:-$(getent passwd "$uid" | cut -d: -f6)}"
@@ -9,7 +16,6 @@ config_home="${XDG_CONFIG_HOME:-$home/.config}"
 # swayidle's timeout and before-sleep hooks can fire close together. Avoid
 # starting a second lockscreen while the user's existing one is active.
 pgrep -u "$uid" -x gtklock >/dev/null 2>&1 && exit 0
-pgrep -u "$uid" -x swaylock >/dev/null 2>&1 && exit 0
 
 find_wallpaper() {
     local pid image i
@@ -54,24 +60,16 @@ find_wallpaper() {
 
 wallpaper="$(find_wallpaper || true)"
 
-if command -v gtklock >/dev/null 2>&1; then
-    setup_script="$home/.local/bin/setup-gtklock.sh"
-    [[ ! -x "$setup_script" ]] || "$setup_script" >/dev/null 2>&1 || true
-
-    config_file="$config_home/gtklock/config.ini"
-    if [[ -n "$wallpaper" ]]; then
-        gtklock --daemonize --config "$config_file" --background "$wallpaper" && exit 0
-    else
-        gtklock --daemonize --config "$config_file" && exit 0
-    fi
+if ! command -v gtklock >/dev/null 2>&1; then
+    printf '%s\n' 'GTKlock is not installed; run the startup installer before locking Sway.' >&2
+    exit 1
 fi
 
-if command -v swaylock >/dev/null 2>&1; then
-    if [[ -n "$wallpaper" ]]; then
-        exec swaylock --daemonize --image "$wallpaper" --scaling fill
-    fi
-    exec swaylock --daemonize --color 000000
+gtklock_args=(--daemonize)
+config_file="$config_home/gtklock/config.ini"
+[[ ! -r "$config_file" ]] || gtklock_args+=(--config "$config_file")
+if [[ -n "$wallpaper" ]]; then
+    gtklock_args+=(--background "$wallpaper")
 fi
 
-printf '%s\n' 'Neither gtklock nor swaylock is installed; cannot lock the Sway session.' >&2
-exit 1
+exec gtklock "${gtklock_args[@]}"

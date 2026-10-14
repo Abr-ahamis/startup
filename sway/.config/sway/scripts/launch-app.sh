@@ -43,5 +43,6 @@ case "${1:-}" in
   telegram) launch_first /opt/Telegram/./Telegram telegram-desktop Telegram ;;
   code) launch_first code codium ;;
   obsidian) launch_first obsidian ;;
-  *) echo "Usage: $0 {terminal|terminal-secondary|neovim|filemanager|browser|editor|screenshot|telegram|code|obsidian}" >&2; exit 2 ;;
+  keepassxc) launch_first keepassxc /snap/bin/keepassxc ;;
+  *) echo "Usage: $0 {terminal|terminal-secondary|neovim|filemanager|browser|editor|screenshot|telegram|code|obsidian|keepassxc}" >&2; exit 2 ;;
 esac
