@@ -87,10 +87,17 @@ grep -q '^bindsym Ctrl+Alt+e exec ~/.local/bin/logout-session.sh$' "$SCRIPT_DIR/
 grep -q 'Logout)' "$SCRIPT_DIR/sway/.config/sway/scripts/power-menu.sh" && grep -q 'logout-session.sh' "$SCRIPT_DIR/sway/.config/sway/scripts/power-menu.sh" || fail 'Sway power menu logout must use the GDM-aware helper'
 grep -q 'exec swaymsg exit' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'GDM-launched Sway logout must return to the GDM greeter'
 grep -q 'session_service.*== gdm' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'Sway logout must only exit directly when the session belongs to GDM'
-if grep -Eq 'pkexec|sudo[[:space:]]|loginctl[[:space:]]+(activate|terminate-session)' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh"; then
-  fail 'Sway logout must not request admin authorization or terminate a system session'
+grep -q 'sudo -n -- "$root_helper" "$session_id"' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'TTY-launched Sway logout must use non-interactive restricted authorization'
+grep -q 'sudo -n -- "$systemctl_path" start display-manager.service' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'TTY-launched Sway logout must start GDM without an interactive terminal prompt'
+[[ -x "$SCRIPT_DIR/scr/gdm/startup-gdm-logout" ]] || fail 'restricted GDM logout helper must be executable'
+grep -q 'systemctl_rule=.*NOPASSWD: /usr/bin/systemctl start display-manager.service' "$SCRIPT_DIR/lib/50-config-files.sh" || fail 'installer must grant only the requested GDM start command without a password'
+grep -q 'loginctl activate' "$SCRIPT_DIR/scr/gdm/startup-gdm-logout" || fail 'restricted helper must activate GDM greeter before logout'
+grep -q 'loginctl terminate-session' "$SCRIPT_DIR/scr/gdm/startup-gdm-logout" || fail 'restricted helper must end only the validated Sway session'
+if grep -Eq '^[[:space:]]*(sudo|pkexec)[[:space:]]' "$SCRIPT_DIR/scr/gdm/startup-gdm-logout"; then
+  fail 'root-side logout helper must not recursively request authorization'
 fi
-grep -q 'started from a terminal, not GDM' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'TTY-launched Sway must explain why password-free logout to GDM is unavailable'
+[[ -x "$SCRIPT_DIR/sway/.local/bin/setup-gdm-scale.sh" ]] || fail 'GDM text-scale setup utility must be executable'
+grep -q 'text-scaling-factor=0.8' "$SCRIPT_DIR/sway/.local/bin/setup-gdm-scale.sh" || fail 'GDM appearance setup must apply 80 percent text scaling'
 grep -q 'logout-session.sh' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/power_menu.sh" || fail 'terminal power menu must share the GDM-aware Sway logout helper'
 if grep -q 'pkill -KILL -u' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/power_menu.sh"; then
   fail 'terminal power menu must not kill all user processes to log out'

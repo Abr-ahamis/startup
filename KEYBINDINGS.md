@@ -274,7 +274,9 @@ The Wi-Fi/network bar provides separate interface slots. Clicking a Wi-Fi slot o
 | `sway/.local/bin/setup-neovim.sh` | Ensure a LazyVim-compatible Neovim version and back up existing Neovim data before setting up the starter config; use `--launch` to open it after setup |
 | `sway/.config/sway/scripts/close-all-windows.sh` | Close all application windows without logging out |
 | `sway/.local/bin/lock-screen.sh` | Start GTKlock only inside the active Sway session, using the current Sway wallpaper |
-| `sway/.local/bin/logout-session.sh` | Return a GDM-started Sway session to the GDM greeter without an admin prompt; a TTY-started session is left running with an explanation |
+| `sway/.local/bin/logout-session.sh` | Return to GDM without a terminal prompt; uses the restricted root helper for TTY-started Sway sessions |
+| `scr/gdm/startup-gdm-logout` | Activate GDM's greeter, then end only the caller's validated active TTY-launched Sway session |
+| `sway/.local/bin/setup-gdm-scale.sh` | Set GDM greeter text scaling to 80% through the system dconf database; monitor-wide scaling remains GDM/compositor-managed |
 | `sway/.local/bin/start-swayidle.sh` | Keep the current Sway session's idle and pre-sleep lock hooks active across config reloads |
 | `sway/.local/bin/setup-gtklock.sh` | Create Adwaita Dark, clock/date, and CSS defaults without overwriting existing gtklock settings |
 | `sway/.local/bin/toggle-wifi-radio.sh` | Toggle NetworkManager Wi-Fi radio safely from the hardware key |

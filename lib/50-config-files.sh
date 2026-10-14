@@ -137,6 +137,63 @@ configure_backlight_access() {
   ok "Brightness device permissions configured"
 }
 
+configure_gdm_logout_access() {
+  local dm helper_src helper_dest sudo_path visudo_path sudoers_file sudoers_temp sudoers_rule systemctl_rule
+  dm="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
+  case "$dm" in
+    */gdm.service|*/gdm3.service) ;;
+    *) info 'GDM logout integration skipped because GDM is not the selected display manager.'; return 0 ;;
+  esac
+  helper_src="$SCRIPT_DIR/scr/gdm/startup-gdm-logout"
+  helper_dest=/usr/local/libexec/startup-gdm-logout
+  systemctl_rule="$TARGET_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start display-manager.service"
+  sudo_path="$(command -v sudo 2>/dev/null || true)"
+  visudo_path="$(command -v visudo 2>/dev/null || true)"
+  [[ -x /usr/bin/sudo ]] && sudo_path=/usr/bin/sudo
+  [[ -x /usr/sbin/visudo ]] && visudo_path=/usr/sbin/visudo
+  [[ -x "$helper_src" && -n "$sudo_path" && -n "$visudo_path" ]] || {
+    warn 'GDM password-free logout could not be configured; sudo, visudo, or its helper is unavailable.'
+    return 1
+  }
+
+  run_as_root install -d -m 755 /usr/local/libexec /etc/sudoers.d || return 1
+  if [[ -e "$helper_dest" ]] && ! run_as_root cmp -s "$helper_src" "$helper_dest"; then
+    run_as_root install -d -m 700 "$SETUP_BACKUP_DIR/gdm-logout" || return 1
+    run_as_root cp -a "$helper_dest" "$SETUP_BACKUP_DIR/gdm-logout/startup-gdm-logout.bak" || return 1
+  fi
+  run_as_root install -o root -g root -m 755 "$helper_src" "$helper_dest" || return 1
+
+  sudoers_file=/etc/sudoers.d/startup-gdm-logout
+  sudoers_rule="$TARGET_USER ALL=(root) NOPASSWD: $helper_dest"
+  if ! run_as_root grep -qxF "$sudoers_rule" "$sudoers_file" 2>/dev/null || ! run_as_root grep -qxF "$systemctl_rule" "$sudoers_file" 2>/dev/null; then
+    if [[ -e "$sudoers_file" ]]; then
+      run_as_root install -d -m 700 "$SETUP_BACKUP_DIR/gdm-logout" || return 1
+      run_as_root cp -a "$sudoers_file" "$SETUP_BACKUP_DIR/gdm-logout/startup-gdm-logout.sudoers.bak" || return 1
+    fi
+    sudoers_temp="$(run_as_root mktemp /etc/sudoers.d/.startup-gdm-logout.XXXXXX)" || return 1
+    if [[ -e "$sudoers_file" ]] && ! run_as_root cat "$sudoers_file" | run_as_root tee "$sudoers_temp" >/dev/null; then
+      run_as_root rm -f -- "$sudoers_temp"
+      return 1
+    fi
+    {
+      run_as_root grep -qxF "$sudoers_rule" "$sudoers_file" 2>/dev/null || printf '%s\n' "$sudoers_rule"
+      run_as_root grep -qxF "$systemctl_rule" "$sudoers_file" 2>/dev/null || printf '%s\n' "$systemctl_rule"
+    } | run_as_root tee -a "$sudoers_temp" >/dev/null || {
+      run_as_root rm -f -- "$sudoers_temp"
+      return 1
+    }
+    run_as_root chmod 440 "$sudoers_temp" || return 1
+    if run_as_root "$visudo_path" -cf "$sudoers_temp" >>"$SETUP_LOG_FILE" 2>&1; then
+      run_as_root mv -f -- "$sudoers_temp" "$sudoers_file" || return 1
+    else
+      run_as_root rm -f -- "$sudoers_temp"
+      warn 'Generated GDM logout sudoers rule failed validation.'
+      return 1
+    fi
+  fi
+  ok 'Password-free Sway-to-GDM logout configured with a restricted helper'
+}
+
 copy_tree_with_backup() {
   local src dest label announce backup relative stage source_count destination_count
   src="${1:-}"; dest="${2:-}"; label="${3:-configuration}"; announce="${4:-1}"
@@ -498,6 +555,7 @@ run_config_files() {
   (( failed == 0 )) && ok_indented 'Copied .config files' || warn "Some .config resources were not copied; existing files were preserved."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/bin" "$TARGET_HOME/.local/bin" "User commands" 0 || failed=1
   configure_backlight_access || warn 'Brightness device access could not be configured; brightness changes may need administrator setup.'
+  configure_gdm_logout_access || warn 'Password-free Sway-to-GDM logout could not be configured.'
   (( failed == 0 )) && ok_indented 'Copied .local/bin files' || warn "Some user commands were not copied."
   if [[ -x "$TARGET_HOME/.local/bin/setup-neovim.sh" ]]; then
     if run_as_target env HOME="$TARGET_HOME" PATH="$TARGET_HOME/.local/bin:$PATH" "$TARGET_HOME/.local/bin/setup-neovim.sh" >>"$SETUP_LOG_FILE" 2>&1; then
@@ -512,6 +570,13 @@ run_config_files() {
       ok_indented 'gtklock dark theme, clock, date, and style defaults prepared (existing customization preserved)'
     else
       warn 'gtklock defaults could not be prepared; run setup-gtklock.sh as the target user.'
+    fi
+  fi
+  if [[ -x "$TARGET_HOME/.local/bin/setup-gdm-scale.sh" ]] && [[ "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)" == */gdm.service || "$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)" == */gdm3.service ]]; then
+    if run_as_root "$TARGET_HOME/.local/bin/setup-gdm-scale.sh" >>"$SETUP_LOG_FILE" 2>&1; then
+      ok_indented 'GDM greeter text scale set to 80% (overall monitor scale remains compositor-managed)'
+    else
+      warn 'GDM greeter text scaling could not be configured; run setup-gdm-scale.sh to retry.'
     fi
   fi
   if [[ -x "$TARGET_HOME/.local/bin/setup-shell-intelligence.sh" ]]; then

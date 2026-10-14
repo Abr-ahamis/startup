@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End a Sway session started by GDM so GDM can show its login screen again.
-# Never request administrator authorization from this user-facing action.
+# The installer grants this helper one narrowly scoped passwordless action so
+# logout stays inside the desktop and never opens a terminal password prompt.
 set -euo pipefail
 
 notify_user() {
@@ -40,9 +41,20 @@ if [[ "$session_service" == gdm* ]]; then
     exec swaymsg exit
 fi
 
-# A Sway session launched directly from a TTY is not managed by GDM. Starting
-# the system display manager or terminating the logind session needs elevated
-# privileges, so fail safely instead of prompting at logout or returning the
-# user to an unexpected shell. Starting Sway from GDM makes logout passwordless.
-notify_user 'This Sway session was started from a terminal, not GDM. It is still running. Log out of this session, then choose Sway from the GDM session menu to enable password-free logout to the GDM login screen.'
-exit 1
+# For TTY-started Sway, use the fixed root-owned helper installed by the
+# installer. sudo -n guarantees that a missing permission never opens a
+# terminal or password dialog from this keybinding/menu action.
+root_helper=/usr/local/libexec/startup-gdm-logout
+systemctl_path=/usr/bin/systemctl
+if [[ ! -x "$root_helper" || ! -x "$systemctl_path" ]] || ! command -v sudo >/dev/null 2>&1; then
+    notify_user 'GDM logout is not configured. Run the installer to install its restricted GDM logout permission.'
+    exit 1
+fi
+if ! sudo -n -- "$systemctl_path" start display-manager.service; then
+    notify_user 'Could not start GDM without a password prompt. Sway is still running; run the installer to configure password-free logout.'
+    exit 1
+fi
+if ! sudo -n -- "$root_helper" "$session_id"; then
+    notify_user 'Could not switch to the GDM login screen. Sway is still running; check the installer log or run the GDM setup again.'
+    exit 1
+fi

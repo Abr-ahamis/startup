@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Root-side, narrowly scoped transition from a TTY-started Sway session to GDM.
+set -euo pipefail
+
+fail() { printf 'startup-gdm-logout: %s\n' "$1" >&2; exit 1; }
+
+[[ "$EUID" == 0 ]] || fail 'must be run through the configured sudo rule'
+[[ $# == 1 && "$1" =~ ^[0-9]+$ ]] || fail 'expected one numeric Sway session ID'
+[[ "${SUDO_UID:-}" =~ ^[0-9]+$ && "$SUDO_UID" != 0 ]] || fail 'missing invoking user identity'
+
+session_id="$1"
+caller_name="$(getent passwd "$SUDO_UID" | cut -d: -f1)"
+[[ -n "$caller_name" ]] || fail 'could not resolve invoking user'
+[[ "$(loginctl show-session "$session_id" -p Name --value 2>/dev/null || true)" == "$caller_name" ]] || fail 'session does not belong to invoking user'
+[[ "$(loginctl show-session "$session_id" -p Class --value 2>/dev/null || true)" == user ]] || fail 'session is not a user session'
+[[ "$(loginctl show-session "$session_id" -p Type --value 2>/dev/null || true)" == wayland ]] || fail 'session is not Wayland'
+[[ "$(loginctl show-session "$session_id" -p Active --value 2>/dev/null || true)" == yes ]] || fail 'session is not active'
+[[ "$(loginctl show-session "$session_id" -p Service --value 2>/dev/null || true)" == login ]] || fail 'session is not a TTY-started session'
+
+display_manager="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
+case "$display_manager" in */gdm.service|*/gdm3.service) ;; *) fail 'GDM is not the selected display manager' ;; esac
+
+# The user-side helper starts GDM with the separately authorized, exact
+# `systemctl start display-manager.service` command. Confirm it is up before
+# activating its greeter and ending Sway.
+/usr/bin/systemctl is-active --quiet display-manager.service || fail 'display-manager.service is not active'
+greeter_id=''
+for _ in {1..40}; do
+    while read -r candidate _; do
+        [[ "$candidate" =~ ^[[:alnum:]_.:-]+$ ]] || continue
+        greeter_class="$(loginctl show-session "$candidate" -p Class --value 2>/dev/null || true)"
+        greeter_service="$(loginctl show-session "$candidate" -p Service --value 2>/dev/null || true)"
+        if [[ "$greeter_class" == greeter && "$greeter_service" == gdm* ]]; then
+            greeter_id="$candidate"
+            break
+        fi
+    done < <(loginctl list-sessions --no-legend --no-pager)
+    [[ -n "$greeter_id" ]] && break
+    sleep 0.25
+done
+[[ -n "$greeter_id" ]] || fail 'GDM did not provide a greeter session; Sway remains active'
+loginctl activate "$greeter_id" || fail 'could not activate the GDM greeter; Sway remains active'
+loginctl terminate-session "$session_id" || fail 'could not end the Sway session'
