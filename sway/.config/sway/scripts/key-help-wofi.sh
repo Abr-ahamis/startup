@@ -103,7 +103,7 @@ entries=(
 
   "@ System menus and actions|"
   "Ctrl + Alt + R|Reload Sway configuration"
-  "Ctrl + Alt + E|Exit Sway session"
+  "Ctrl + Alt + E|Log out to the GDM login screen"
   "Ctrl + Alt + L|Lock Sway session with GTKlock"
   "Ctrl + Alt + P|Open power menu"
   "Ctrl + Alt + W|Open Wi-Fi controller"

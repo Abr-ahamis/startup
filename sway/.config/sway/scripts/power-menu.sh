@@ -21,7 +21,7 @@ Cancel"
       command -v systemctl >/dev/null 2>&1 && systemctl suspend || { command -v notify-send >/dev/null 2>&1 && notify-send 'Power menu' 'systemctl is unavailable'; }
       ;;
     Logout)
-      swaymsg exit
+      "$HOME/.local/bin/logout-session.sh"
       ;;
     ""|Cancel)
       exit 0

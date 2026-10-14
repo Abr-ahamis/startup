@@ -71,12 +71,14 @@ sleep_system() {
 logout_system() {
   echo -e "${C_WARN}[*] Logging out...${C_RESET}"
 
-  if [[ "${XDG_CURRENT_DESKTOP:-}" == *"i3"* ]]; then
+  if [[ -n "${SWAYSOCK:-}" ]] && command -v swaymsg >/dev/null 2>&1; then
+    "$HOME/.local/bin/logout-session.sh"
+  elif [[ "${XDG_CURRENT_DESKTOP:-}" == *"i3"* ]]; then
     i3-msg exit >/dev/null 2>&1 || true
   elif [[ "${XDG_CURRENT_DESKTOP:-}" == *"GNOME"* ]]; then
     gnome-session-quit --logout --no-prompt >/dev/null 2>&1 || true
   else
-    pkill -KILL -u "$USER"
+    echo -e "${C_ERROR}No supported desktop logout command is available.${C_RESET}" >&2
   fi
 }
 

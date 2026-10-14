@@ -95,7 +95,7 @@ bindsym $mod+Shift+p exec $launcher keepassxc
 
 # Existing utility menus
 bindsym Ctrl+Alt+r reload
-bindsym Ctrl+Alt+e exit
+bindsym Ctrl+Alt+e exec ~/.local/bin/logout-session.sh
 bindsym Ctrl+Alt+l exec ~/.local/bin/lock-screen.sh
 bindsym Ctrl+Alt+p exec bash -lc "$HOME/.config/sway/scripts/power-menu.sh;"
 bindsym Ctrl+Alt+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"

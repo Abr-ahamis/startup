@@ -70,6 +70,7 @@ fi
 for resource in foot i3blocks sway flameshot wofi systemd startup; do
   [[ -d "$SCRIPT_DIR/sway/.config/$resource" ]] || fail "missing managed resource: sway/.config/$resource"
 done
+[[ -x "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" ]] || fail 'GDM-aware Sway logout helper must be executable'
 if grep -q 'sway/config/' "$SCRIPT_DIR/lib/50-config-files.sh"; then
   fail 'configuration installer still references the obsolete sway/config source layout'
 fi
@@ -82,6 +83,14 @@ grep -q '"Ctrl + Alt + Delete|Close all application windows"' "$SCRIPT_DIR/sway/
 grep -q '^bindsym Ctrl+Alt+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+L must invoke the lock helper'
 grep -q '^bindsym \$mod+Ctrl+l exec ~/.local/bin/lock-screen.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Super+Ctrl+L must invoke the lock helper'
 grep -q '^bindsym \$mod+Shift+p exec \$launcher keepassxc$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Super+Shift+P must launch KeePassXC in Sway'
+grep -q '^bindsym Ctrl+Alt+e exec ~/.local/bin/logout-session.sh$' "$SCRIPT_DIR/sway/.config/sway/config" || fail 'Ctrl+Alt+E must use GDM-aware logout'
+grep -q 'Logout)' "$SCRIPT_DIR/sway/.config/sway/scripts/power-menu.sh" && grep -q 'logout-session.sh' "$SCRIPT_DIR/sway/.config/sway/scripts/power-menu.sh" || fail 'Sway power menu logout must use the GDM-aware helper'
+grep -q 'loginctl activate' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'TTY-launched Sway logout must activate the GDM greeter before ending the session'
+grep -q 'loginctl terminate-session' "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" || fail 'Sway logout must terminate the login session instead of returning to its shell'
+grep -q 'logout-session.sh' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/power_menu.sh" || fail 'terminal power menu must share the GDM-aware Sway logout helper'
+if grep -q 'pkill -KILL -u' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/power_menu.sh"; then
+  fail 'terminal power menu must not kill all user processes to log out'
+fi
 grep -q 'keepassxc) launch_first keepassxc /snap/bin/keepassxc' "$SCRIPT_DIR/sway/.config/sway/scripts/launch-app.sh" || fail 'application launcher must support native and Snap KeePassXC commands'
 grep -q 'startup-keepassxc.*<Super><Shift>p.*KeePassXC password manager' "$SCRIPT_DIR/lib/95-gnome-keybindings.sh" || fail 'GNOME must receive the KeePassXC shortcut'
 grep -q 'Super + Shift + P|KeePassXC password manager' "$SCRIPT_DIR/sway/.config/sway/scripts/key-help-wofi.sh" || fail 'Sway key help must list KeePassXC'
