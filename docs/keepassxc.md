@@ -13,7 +13,7 @@ Ubuntu. Debian, Kali, Arch, and Linux Mint do not receive an Ubuntu PPA.
 
 ## Keyboard shortcut
 
-**Super + Shift + P** opens KeePassXC in both Sway and GNOME. The Sway binding
+**Alt + Shift + P** opens KeePassXC in both Sway and GNOME. The Sway binding
 uses the shared application launcher, which checks the native `keepassxc`
 command and then `/snap/bin/keepassxc`.
 

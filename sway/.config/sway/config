@@ -74,24 +74,26 @@ for_window [app_id="wofi"] sticky enable
 # ---------------------------
 
 # Applications and launchers
-bindsym $mod+Return exec $term
-bindsym $mod+Alt+Return exec $term2
+
 bindsym $mod+space exec ~/.local/bin/wofi-popup.sh --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
 bindsym $mod+Alt+space exec ~/.local/bin/wofi-popup.sh --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
 bindsym $mod+d exec ~/.local/bin/wofi-popup.sh --show drun --prompt "󰍉  Search Applications" --insensitive --matching contains --allow-images
 bindsym Shift+F1 exec ~/.config/sway/scripts/key-help-wofi.sh
 bindsym $mod+k exec ~/.config/sway/scripts/key-help-wofi.sh
-
 bindsym $mod+Escape exec bash -lc "$HOME/.config/sway/scripts/power-menu.sh;"
-bindsym $mod+Shift+Return exec $browser
-bindsym $mod+Shift+f exec $filemanager
-bindsym $mod+Shift+t exec $launcher telegram
-bindsym $mod+Shift+n exec $launcher neovim
-bindsym $mod+Shift+$alt+n exec $editor
+
+bindsym Alt+Return exec $term
+bindsym Alt+Shift+backslash exec $term2
+bindsym Alt+Shift+Return exec $browser
+bindsym Alt+Shift+f exec $filemanager
+bindsym Alt+Shift+t exec $launcher telegram
+bindsym Alt+Shift+n exec $launcher neovim
+bindsym Alt+Shift+m exec $editor
+bindsym Alt+Shift+S exec $screenshot
 bindsym Print exec $screenshot
-bindsym $mod+Shift+c exec $launcher code
-bindsym $mod+Shift+o exec $launcher obsidian
-bindsym $mod+Shift+p exec $launcher keepassxc
+bindsym Alt+Shift+c exec $launcher code
+bindsym Alt+Shift+o exec $launcher obsidian
+bindsym Alt+Shift+p exec $launcher keepassxc
 
 # Existing utility menus
 bindsym Ctrl+Alt+r reload
@@ -104,24 +106,18 @@ bindsym Ctrl+Alt+i exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/ip_me
 bindsym Ctrl+Alt+v exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
 
 # System controls
-bindsym $mod+Ctrl+l exec ~/.local/bin/lock-screen.sh
-# Also accept Shift+L for keyboards or launchers that report the capital keysym.
-bindsym $mod+Ctrl+Shift+l exec ~/.local/bin/lock-screen.sh
-bindsym $mod+Ctrl+a exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/vol-brigh_menu.sh; exec bash"
-bindsym $mod+Ctrl+b exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/bt_menu.sh; exec bash"
-bindsym $mod+Ctrl+w exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/wifi_menu.sh; exec bash"
-bindsym Shift+Ctrl+p exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
-bindsym $mod+Ctrl+t exec ~/.local/bin/system-monitor.sh
-bindsym $mod+Ctrl+c exec $screenshot
-bindsym $mod+Ctrl+Delete exec swaymsg 'output * dpms off'
-bindsym $mod+Ctrl+n exec $night_light
+bindsym Ctrl+Alt+Shift+p exec foot bash -lc "$HOME/.config/i3blocks/scripts/menu/power_menu.sh; exec bash"
+bindsym Ctrl+Alt+t exec ~/.local/bin/system-monitor.sh
+bindsym Ctrl+Alt+c exec $screenshot
+bindsym Ctrl+Alt+Shift+Delete exec swaymsg 'output * dpms off'
+bindsym Ctrl+Alt+n exec $night_light
 bindsym Ctrl+Alt+Delete exec $close_all
 
 # Notifications and clipboard
-bindsym $mod+comma exec dunstctl close
-bindsym $mod+Shift+comma exec dunstctl close-all
-bindsym $mod+Ctrl+comma exec dunstctl set-paused toggle
-bindsym $mod+Ctrl+v exec sh -c 'cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard --width 620 --height 820 | cliphist decode | wl-copy'
+bindsym Ctrl+Alt+comma exec dunstctl close
+bindsym Ctrl+Alt+Shift+comma exec dunstctl close-all
+bindsym Ctrl+Alt+period exec dunstctl set-paused toggle
+bindsym Ctrl+Alt+x exec sh -c 'cliphist list | "$HOME/.local/bin/wofi-popup.sh" --dmenu --insensitive --prompt clipboard --width 620 --height 820 | cliphist decode | wl-copy'
 
 bindsym Ctrl+Shift+Mod4+q exec systemctl poweroff
 bindsym Ctrl+Shift+Mod4+a exec systemctl reboot
@@ -133,6 +129,7 @@ exec_always --no-startup-id ~/.local/bin/polkit-agent.sh
 # Window and layout controls
 bindsym $mod+w kill
 bindsym $mod+f fullscreen toggle
+bindsym $mod+Shift+f floating toggle, sticky toggle, resize set width 800 px height 600 px
 bindsym $mod+t floating toggle
 bindsym $mod+o floating toggle, sticky toggle
 bindsym $mod+a focus parent

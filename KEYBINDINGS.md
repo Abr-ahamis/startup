@@ -14,13 +14,14 @@ This reference follows the Omarchy-style keybinding layout while documenting the
 | **Super + Alt + Space** | Application launcher |
 | **Super + D** | Application launcher |
 | **Super + Escape** | System / power menu |
-| **Super + Ctrl + L** | Lock Sway with GTKlock |
+| **Ctrl + Alt + L** | Lock Sway with GTKlock |
 | **Super + W** | Close focused window |
 | **Ctrl + Alt + Delete** | Close all application windows without logging out |
 | **Super + T** | Toggle window between tiling and floating |
 | **Super + J / E** | Toggle split layout orientation |
 | **Super + O** | Toggle sticky + floating window |
 | **Super + F** | Fullscreen |
+| **Super + Shift + F** | Toggle floating and sticky; set window size to 800×600 |
 | **Super + 1…9 / 0** | Jump to workspaces 1…9 / 10 |
 | **Super + Tab / Shift + Tab** | Next / previous workspace |
 | **Super + Ctrl + Tab** | Return to former workspace |
@@ -73,29 +74,25 @@ Monitor zoom and scaling shortcuts are not currently configured.
 
 | Hotkey | Function |
 | --- | --- |
-| **Super + Ctrl + Delete** | Turn off display outputs while keeping the session active |
+| **Ctrl + Alt + Shift + Delete** | Turn off display outputs while keeping the session active |
 | **Super + Shift + Alt + Arrow** | Move workspace to the output in that direction |
 
 ---
 
 # System controls
 
-System utilities use the **Super + Ctrl** family where configured.
+System and utility controls use the **Ctrl + Alt** family where configured.
 
 | Hotkey | Function |
 | --- | --- |
-| **Super + Ctrl + A** | Audio and brightness controls |
-| **Super + Ctrl + B** | Bluetooth controls |
-| **Super + Ctrl + W** | Wi-Fi controller |
-| **Super + Ctrl + T** | System monitor — btop, htop, or top fallback |
-| **Super + Ctrl + C** | Screenshot |
-| **Super + Ctrl + V** | Clipboard manager |
-| **Super + Ctrl + N** | Toggle night light |
-| **Super + Ctrl + Shift + L** | Lock Sway with GTKlock (alternate binding) |
-| **Ctrl + Alt + I** | IP / network information |
 | **Ctrl + Alt + V** | Audio and brightness controls |
-| **Ctrl + Alt + W** | Wi-Fi controller |
 | **Ctrl + Alt + B** | Bluetooth controls |
+| **Ctrl + Alt + W** | Wi-Fi controller |
+| **Ctrl + Alt + I** | IP / network information |
+| **Ctrl + Alt + T** | System monitor — btop, htop, or top fallback |
+| **Ctrl + Alt + C** | Screenshot |
+| **Ctrl + Alt + X** | Clipboard manager |
+| **Ctrl + Alt + N** | Toggle night light |
 | **XF86RFKill** | Toggle Wi-Fi radio |
 
 ### Direct system actions
@@ -113,16 +110,17 @@ System utilities use the **Super + Ctrl** family where configured.
 
 | Hotkey | Function |
 | --- | --- |
-| **Super + Return** | Preferred terminal |
-| **Super + Alt + Return** | Secondary terminal |
-| **Super + Shift + Return** | Preferred browser |
-| **Super + Shift + F** | Preferred file manager |
-| **Super + Shift + T** | Telegram |
-| **Super + Shift + N** | Neovim / LazyVim in the preferred terminal |
-| **Super + Shift + Alt + N** | Preferred GUI text editor |
-| **Super + Shift + C** | VS Code / VSCodium |
-| **Super + Shift + O** | Obsidian |
-| **Super + Shift + P** | KeePassXC password manager |
+| **Alt + Return** | Preferred terminal |
+| **Alt + Shift + Backslash** | Secondary terminal |
+| **Alt + Shift + Return** | Preferred browser |
+| **Alt + Shift + F** | Preferred file manager |
+| **Alt + Shift + T** | Telegram |
+| **Alt + Shift + N** | Neovim / LazyVim in the preferred terminal |
+| **Alt + Shift + M** | Preferred GUI text editor |
+| **Alt + Shift + S** | Screenshot |
+| **Alt + Shift + C** | VS Code / VSCodium |
+| **Alt + Shift + O** | Obsidian |
+| **Alt + Shift + P** | KeePassXC password manager |
 | **Print** | Screenshot |
 | **Super + D / Space** | Application launcher |
 | **Super + K / Shift + F1** | Keybinding help |
@@ -151,7 +149,7 @@ The launcher uses the first installed program from each role.
 
 | Hotkey | Function |
 | --- | --- |
-| **Super + Ctrl + V** | Open clipboard history |
+| **Ctrl + Alt + X** | Open clipboard history |
 
 Super+C and Super+X are not assigned globally in the Sway config, so ordinary application copy and cut shortcuts remain available.
 
@@ -162,7 +160,7 @@ Super+C and Super+X are not assigned globally in the Sway config, so ordinary ap
 | Hotkey | Function |
 | --- | --- |
 | **Print** | Screenshot using Flameshot, or Grim if Flameshot is unavailable |
-| **Super + Ctrl + C** | Screenshot using the same fallback |
+| **Ctrl + Alt + C** | Screenshot using the same fallback |
 
 A separate capture control menu and screen-recording binding are not currently configured.
 
@@ -172,9 +170,9 @@ A separate capture control menu and screen-recording binding are not currently c
 
 | Hotkey | Function |
 | --- | --- |
-| **Super + ,** | Dismiss latest notification |
-| **Super + Shift + ,** | Dismiss all notifications |
-| **Super + Ctrl + ,** | Toggle notification silence / Do Not Disturb |
+| **Ctrl + Alt + ,** | Dismiss latest notification |
+| **Ctrl + Alt + Shift + ,** | Dismiss all notifications |
+| **Ctrl + Alt + .** | Toggle notification silence / Do Not Disturb |
 
 ---
 
@@ -187,7 +185,7 @@ A separate capture control menu and screen-recording binding are not currently c
 | **Mute** | Toggle default audio sink mute |
 | **Alt + Volume Down** | Decrease volume by 1% |
 | **Alt + Volume Up** | Increase volume by 1% |
-| **Super + Ctrl + A** | Open audio and brightness controls |
+| **Ctrl + Alt + V** | Open audio and brightness controls |
 
 ---
 
@@ -201,9 +199,9 @@ A separate capture control menu and screen-recording binding are not currently c
 | **Shift + Brightness Up** | Set brightness to maximum |
 | **Alt + Brightness Down** | Decrease brightness by 1% |
 | **Alt + Brightness Up** | Increase brightness by 1% |
-| **Super + Ctrl + A** | Open audio and brightness controls |
-| **Super + Ctrl + N** | Toggle night light |
-| **Super + Ctrl + Delete** | Turn off display outputs |
+| **Ctrl + Alt + V** | Open audio and brightness controls |
+| **Ctrl + Alt + N** | Toggle night light |
+| **Ctrl + Alt + Shift + Delete** | Turn off display outputs |
 
 ---
 
@@ -213,7 +211,7 @@ A separate capture control menu and screen-recording binding are not currently c
 | --- | --- |
 | **Super + Escape** | Open power / system menu |
 | **Ctrl + Alt + P** | Open power / system menu |
-| **Shift + Ctrl + P** | Open power menu in a terminal |
+| **Ctrl + Alt + Shift + P** | Open power menu in a terminal |
 | **Ctrl + Shift + Super + Q** | Power off |
 | **Ctrl + Shift + Super + A** | Reboot |
 | **Ctrl + Shift + Super + S** | Suspend |
@@ -304,17 +302,21 @@ The configured layout uses these modifier families:
 
 Navigation, window management, workspace switching, scratchpad, and resize controls.
 
+### Alt + Shift
+
+Application launching.
+
 ### Super + Shift
 
-Application launching and moving windows to workspaces.
+Moving windows to workspaces and toggling a window sticky/floating with a preset size.
 
-### Super + Ctrl
+### Ctrl + Alt
 
-System and desktop controls, including audio, Bluetooth, Wi-Fi, btop, screenshots, clipboard, display, and night light.
+System and desktop controls, including audio, Bluetooth, Wi-Fi, btop, screenshots, clipboard, display, notifications, and night light.
 
 ### Super + Alt
 
-Secondary terminal, alternate launcher, scratchpad, monitor movement, and fine window resizing.
+Alternate launcher, scratchpad, monitor movement, and fine window resizing.
 
 ### Ctrl + Shift + Super
 

@@ -6,20 +6,22 @@ SETUP_BACKUP_DIR="$SETUP_BASE_DIR/installer-backups/$SETUP_TIMESTAMP"
 FAILED_REQUIRED_PACKAGES=() REQUIRED_PACKAGES=() MISSING_PACKAGES=() INVALID_PACKAGES=()
 SETUP_APT_LOCK_TIMEOUT="${SETUP_APT_LOCK_TIMEOUT:-60}"
 
+load_distro_package_profile() {
+  [[ "${__SETUP_PACKAGE_PROFILE_LOADED_FOR:-}" == "$DISTRO_ID" ]] && return 0
+  local profile="$SCRIPT_DIR/lib/distros/$DISTRO_ID.sh"
+  [[ -f "$profile" ]] || profile="$SCRIPT_DIR/lib/distros/default.sh"
+  # Profiles provide distro-specific package lists and call the family
+  # defaults for features they do not override.
+  # shellcheck source=/dev/null
+  source "$profile" || return 1
+  __SETUP_PACKAGE_PROFILE_LOADED_FOR="$DISTRO_ID"
+  DISTRO_PACKAGE_PROFILE="$profile"
+}
+
 package_for() {
   local feature="$1"
-  case "$DISTRO_FAMILY:$feature" in
-    debian:python) echo python3;; arch:python) echo python;; debian:notify) echo libnotify-bin;; arch:notify) echo libnotify;;
-    debian:network) echo network-manager network-manager-gnome;; arch:network) echo networkmanager network-manager-applet;;
-    debian:secret) echo libsecret-1-0 libsecret-tools;; arch:secret) echo libsecret;;
-    debian:keyring_pam) echo libpam-gnome-keyring;; arch:keyring_pam) echo gnome-keyring;;
-    debian:git_libsecret) echo build-essential pkg-config libsecret-1-dev;; arch:git_libsecret) echo base-devel pkgconf libsecret;;
-    debian:portal|arch:portal) echo xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk;; debian:audio|arch:audio) echo pipewire pipewire-pulse wireplumber;;
-    debian:clipboard|arch:clipboard) echo cliphist;; debian:bluetooth) echo bluez;; arch:bluetooth) echo bluez-utils;;
-    debian:keepassxc|arch:keepassxc) echo keepassxc;;
-    debian:core) echo sway swaybg swayidle swaylock gtklock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber pulseaudio-utils pamixer wl-clipboard cliphist network-manager network-manager-gnome bluez blueman rfkill mate-polkit xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus-user-session brightnessctl dunst libnotify-bin fontconfig jq curl gnome-keyring grub-customizer timeshift libsecret-1-0 libsecret-tools seahorse gnupg age apparmor bubblewrap cryptsetup build-essential pkg-config libsecret-1-dev libpam-gnome-keyring git grub2-common neovim;;
-    arch:core) echo sway swaybg swayidle swaylock gtklock i3blocks wofi foot dex gammastep flameshot grim slurp pipewire pipewire-pulse wireplumber libpulse pamixer wl-clipboard cliphist networkmanager network-manager-applet bluez bluez-utils blueman rfkill polkit-gnome xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk dbus brightnessctl dunst libnotify fontconfig jq curl gnome-keyring timeshift libsecret seahorse gnupg age apparmor bubblewrap cryptsetup base-devel pkgconf git neovim;;
-    *) return 1;; esac
+  load_distro_package_profile || return 1
+  distro_package_for "$feature"
 }
 package_get_version() { case "$PKG_MANAGER" in apt) dpkg-query -W -f='${Version}' "$1" 2>/dev/null;; pacman) pacman -Q "$1" 2>/dev/null | awk '{print $2}';; esac; }
 package_expected_command() {
@@ -78,7 +80,7 @@ package_name_valid() { [[ "$1" =~ ^[[:alnum:]][[:alnum:]+.-]*$ ]]; }
 package_name_approved() {
   local package="$1" feature candidate
   case "$package" in
-    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|gtklock|jq|keepassxc|snap|software-properties-common|sudo) return 0;;
+    adw-gtk3|adw-gtk3-kali|autotiling|brightnessctl|curl|grub-customizer|gtklock|jq|keepassxc|snap|software-properties-common|sudo) return 0;;
   esac
   for feature in core network secret portal audio clipboard bluetooth python notify; do
     for candidate in $(package_for "$feature"); do
@@ -113,7 +115,38 @@ repair_apt() { info 'Repairing interrupted APT/dpkg state before one retry.'; ru
 refresh_package_metadata() {
   # APT metadata is refreshed once before availability decisions.  Pacman is
   # intentionally not given a standalone -Sy: that can create a partial upgrade.
+  [[ "$PKG_MANAGER" != apt ]] || repair_debian_trixie_security_source || return 1
   [[ "$PKG_MANAGER" != apt ]] || run_package_command 'apt metadata refresh' run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 10m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" update
+}
+repair_debian_trixie_security_source() {
+  # Debian 13's security archive is hosted at security.debian.org/debian-security.
+  # Repair only the known-invalid legacy source form that caused APT to fail;
+  # Ubuntu, Kali, Arch, deb822 sources, and all other entries remain untouched.
+  [[ "$DISTRO_ID" == debian && "${VERSION_CODENAME:-}" == trixie ]] || return 0
+  local apt_dir="${STARTUP_APT_SOURCE_DIR:-/etc/apt}" file relative backup
+  local -a candidates=()
+  [[ -f "$apt_dir/sources.list" ]] && candidates+=("$apt_dir/sources.list")
+  shopt -s nullglob
+  candidates+=("$apt_dir"/sources.list.d/*.list)
+  shopt -u nullglob
+  for file in "${candidates[@]}"; do
+    # Match only an active traditional deb line using the bare Debian web host
+    # for the trixie-security suite. Never touch comments or valid mirrors.
+    grep -Eq '^[[:space:]]*deb([[:space:]]+\[[^]]*\])?[[:space:]]+https?://(www\.)?debian\.org[[:space:]]+trixie-security([[:space:]]|$)' "$file" || continue
+    relative="${file#"$apt_dir"/}"
+    backup="$SETUP_BACKUP_DIR/apt-sources/$relative"
+    run_as_root install -d -m 700 "$(dirname -- "$backup")" &&
+      run_as_root cp -a -- "$file" "$backup" || {
+        required_failure "Cannot back up invalid Debian security source: $file"
+        return 1
+      }
+    run_as_root sed -E -i 's#(^[[:space:]]*deb([[:space:]]+\[[^]]*\])?[[:space:]]+https?://)(www\.)?debian\.org([[:space:]]+trixie-security([[:space:]]|$))#\1security.debian.org/debian-security\4#' "$file" || {
+      required_failure "Cannot repair Debian trixie-security source: $file (backup: $backup)"
+      return 1
+    }
+    printf '[INFO] Repaired Debian 13 security repository in %s; backup: %s\n' "$file" "$backup"
+  done
+  return 0
 }
 package_install_batch() {
   local package
@@ -217,6 +250,25 @@ install_keepassxc() {
   required_failure 'KeePassXC is unavailable from native repositories and Snap is not installed.'
   return 1
 }
+install_optional_grub_customizer() {
+  # GRUB theme deployment uses grub-mkconfig/update-grub directly. The GUI
+  # customizer is a convenience package and is absent from some supported
+  # Ubuntu-derived repositories (including some Linux Mint configurations).
+  if package_installed grub-customizer; then
+    if package_verify grub-customizer; then package_done grub-customizer; else warn "Optional grub-customizer is installed but failed verification: $PACKAGE_VERIFY_REASON"; fi
+    return 0
+  fi
+  if ! package_available grub-customizer; then
+    info 'Optional grub-customizer is unavailable from the configured repositories; skipping it.'
+    return 0
+  fi
+  if package_install_batch grub-customizer && package_verify grub-customizer; then
+    package_done grub-customizer
+  else
+    warn 'Optional grub-customizer could not be installed or verified; GRUB theme setup does not depend on it.'
+  fi
+  return 0
+}
 run_packages() {
   local pkg; cleanup_previous_package_process; run_as_root install -d -m 700 "$SETUP_BACKUP_DIR" || { required_failure "Cannot create backup directory: $SETUP_BACKUP_DIR"; return 1; }; backup_package_selections; refresh_package_metadata || { required_failure 'APT metadata refresh failed; package availability cannot be trusted'; return 1; }; ensure_ubuntu_keepassxc_ppa || return 1; collect_required_packages; MISSING_PACKAGES=() INVALID_PACKAGES=() FAILED_REQUIRED_PACKAGES=()
   for pkg in "${REQUIRED_PACKAGES[@]}"; do if package_verify "$pkg"; then package_done "$pkg"; elif package_available "$pkg"; then MISSING_PACKAGES+=("$pkg"); [[ "$PACKAGE_VERIFY_REASON" != 'package database does not report installed' ]] && INVALID_PACKAGES+=("$pkg"); else FAILED_REQUIRED_PACKAGES+=("$pkg"); required_failure "Required package unavailable in configured repositories: $pkg"; fi; done
@@ -229,5 +281,6 @@ run_packages() {
   for pkg in "${REQUIRED_PACKAGES[@]}"; do if package_verify "$pkg"; then package_done "$pkg"; else FAILED_REQUIRED_PACKAGES+=("$pkg"); required_failure "Required package verification failed: $pkg ($PACKAGE_VERIFY_REASON)"; fi; done
   (( ${#FAILED_REQUIRED_PACKAGES[@]} == 0 )) || return 1
   install_keepassxc || return 1
+  install_optional_grub_customizer
   ok_indented "All required packages independently verified. [${#REQUIRED_PACKAGES[@]} components]"
 }

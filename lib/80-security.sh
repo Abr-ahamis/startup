@@ -25,17 +25,31 @@ security_find_git_helper() {
 }
 
 security_build_git_helper() {
-  local source_dir="/usr/share/doc/git/contrib/credential/libsecret"
-  local pkg
+  local source_dir='' build_dir="${SETUP_RUNTIME_DIR:-${TMPDIR:-/tmp}}/git-libsecret-build" pkg
+  local install_path="${STARTUP_GIT_LIBSECRET_INSTALL_PATH:-/usr/local/libexec/git-core/git-credential-libsecret}"
+  local candidate
   for pkg in $(package_for git_libsecret); do
     package_installed "$pkg" || { warn "$pkg is required for the Git libsecret helper but is unavailable."; return 1; }
     ok_indented "$pkg is already installed"
   done
-  [[ -f "$source_dir/Makefile" ]] || return 1
+  # Debian ships the contrib source under /usr/share/doc/git; Arch packages
+  # commonly expose it under /usr/share/git. Build from a private copy because
+  # documentation directories may be read-only or have restrictive ownership.
+  local -a source_candidates=(/usr/share/doc/git/contrib/credential/libsecret /usr/share/git/credential/libsecret)
+  [[ -z "${STARTUP_GIT_LIBSECRET_SOURCE_DIR:-}" ]] || source_candidates=("$STARTUP_GIT_LIBSECRET_SOURCE_DIR" "${source_candidates[@]}")
+  for candidate in "${source_candidates[@]}"; do
+    if [[ -f "$candidate/Makefile" && -f "$candidate/git-credential-libsecret.c" ]]; then
+      source_dir="$candidate"
+      break
+    fi
+  done
+  [[ -n "$source_dir" ]] || { warn 'Git libsecret helper source files are unavailable.'; return 1; }
   info 'Building Git libsecret helper (maximum 30 seconds)...'
-  run_as_root timeout --foreground 30s make -C "$source_dir" >>"$SETUP_LOG_FILE" 2>&1 || return 1
-  [[ -x "$source_dir/git-credential-libsecret" ]] || return 1
-  run_as_root install -D -m 755 "$source_dir/git-credential-libsecret" /usr/local/libexec/git-core/git-credential-libsecret
+  run_as_target install -d -m 700 "$build_dir" || return 1
+  run_as_target install -m 644 "$source_dir/Makefile" "$source_dir/git-credential-libsecret.c" "$build_dir/" || return 1
+  run_as_target timeout --foreground 30s make -C "$build_dir" >>"$SETUP_LOG_FILE" 2>&1 || return 1
+  [[ -x "$build_dir/git-credential-libsecret" ]] || return 1
+  run_as_root install -D -m 755 -- "$build_dir/git-credential-libsecret" "$install_path"
 }
 
 security_configure_git_libsecret() {

@@ -18,12 +18,12 @@ detect_distro() {
   DISTRO_NAME="${NAME:-$DISTRO_ID}"
   DISTRO_PRETTY="${PRETTY_NAME:-$DISTRO_NAME}"
   local ids=" $DISTRO_ID ${ID_LIKE:-} "
-  if [[ "$ids" == *" debian "* ]] || [[ "$DISTRO_ID" =~ ^(debian|ubuntu|linuxmint|kali)$ ]]; then
+  if [[ "$ids" == *" debian "* || "$ids" == *" ubuntu "* || "$ids" == *" linuxmint "* ]] || [[ "$DISTRO_ID" =~ ^(debian|ubuntu|linuxmint|kali)$ ]]; then
     DISTRO_FAMILY=debian; PKG_MANAGER=apt
   elif [[ "$ids" == *" arch "* ]] || [[ "$DISTRO_ID" == arch ]]; then
     DISTRO_FAMILY=arch; PKG_MANAGER=pacman
   else
-    error "Unsupported distribution: $DISTRO_PRETTY. Supported: Debian, Ubuntu, Linux Mint, Kali Linux, and Arch Linux."
+    error "Unsupported distribution: $DISTRO_PRETTY. Supported package families: Debian/Ubuntu-derived distributions and Arch-derived distributions."
     return 1
   fi
   if ! command -v "$PKG_MANAGER" >/dev/null 2>&1 && ! { [[ "$PKG_MANAGER" == apt ]] && command -v apt-get >/dev/null 2>&1; }; then

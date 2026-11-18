@@ -128,6 +128,8 @@ run_gnome_desktop_setup() {
     info "GNOME user session unavailable; GNOME settings deferred until login."
     return 0
   fi
+  gnome_set_verified org.gnome.desktop.interface icon-theme "'Adwaita'" || return 1
+  gnome_set_verified org.gnome.desktop.interface text-scaling-factor 0.8 || return 1
   # Keep common window/workspace behavior aligned with the shipped Sway map.
   gnome_set_verified org.gnome.desktop.wm.keybindings close "['<Super>w']" || return 1
   gnome_set_verified org.gnome.desktop.wm.keybindings panel-main-menu "['<Super>d']" || return 1
