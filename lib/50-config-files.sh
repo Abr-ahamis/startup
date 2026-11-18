@@ -48,6 +48,38 @@ verify_i3blocks_runtime() {
   ok_indented 'i3blocks started and emitted bar data'
 }
 
+build_install_battery_monitor() {
+  local source_dir="$SCRIPT_DIR/battery-monitor"
+  local build_dir="$SETUP_RUNTIME_DIR/neo-battery-monitor-build"
+  local binary="$TARGET_HOME/.local/bin/neo-battery-monitor"
+  [[ -f "$source_dir/CMakeLists.txt" && -f "$source_dir/src/main.cpp" ]] || {
+    required_failure 'NEO Battery Monitor C++ source is missing.'
+    return 1
+  }
+  command -v cmake >/dev/null 2>&1 || {
+    required_failure 'CMake is unavailable; install the battery monitor build dependencies for this OS.'
+    return 1
+  }
+  run_as_target install -d -m 700 "$build_dir" || return 1
+  run_as_target cmake -S "$source_dir" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release >>"$SETUP_LOG_FILE" 2>&1 || {
+    required_failure "NEO Battery Monitor CMake configuration failed; see $SETUP_LOG_FILE."
+    return 1
+  }
+  run_as_target cmake --build "$build_dir" --parallel >>"$SETUP_LOG_FILE" 2>&1 || {
+    required_failure "NEO Battery Monitor compilation failed; see $SETUP_LOG_FILE."
+    return 1
+  }
+  run_as_target install -D -m 755 -- "$build_dir/neo-battery-monitor" "$binary" || {
+    required_failure "Could not install NEO Battery Monitor for $TARGET_USER."
+    return 1
+  }
+  run_as_target "$binary" --help >/dev/null 2>&1 || {
+    required_failure 'Installed NEO Battery Monitor failed its help smoke check.'
+    return 1
+  }
+  ok_indented 'NEO Battery Monitor compiled and installed; it starts only inside Sway.'
+}
+
 configure_backlight_access() {
   local rule_file="/etc/udev/rules.d/90-startup-backlight.rules"
   local sudoers_file="/etc/sudoers.d/startup-brightness"
@@ -557,6 +589,7 @@ run_config_files() {
   configure_backlight_access || warn 'Brightness device access could not be configured; brightness changes may need administrator setup.'
   configure_gdm_logout_access || warn 'Password-free Sway-to-GDM logout could not be configured.'
   (( failed == 0 )) && ok_indented 'Copied .local/bin files' || warn "Some user commands were not copied."
+  build_install_battery_monitor || failed=1
   if [[ -x "$TARGET_HOME/.local/bin/setup-neovim.sh" ]]; then
     if run_as_target env HOME="$TARGET_HOME" PATH="$TARGET_HOME/.local/bin:$PATH" "$TARGET_HOME/.local/bin/setup-neovim.sh" >>"$SETUP_LOG_FILE" 2>&1; then
       ok_indented 'Neovim version checked and LazyVim configuration prepared'

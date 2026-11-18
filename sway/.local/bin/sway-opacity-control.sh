@@ -35,15 +35,26 @@ apply_opacity() {
   done
 }
 
+apply_opacity_to_container() {
+  local value="$1" id="$2" opacity
+  [[ "$id" =~ ^[0-9]+$ ]] || return 0
+  opacity="$(awk -v transparency="$value" 'BEGIN { printf "%.2f", (100-transparency)/100 }')"
+  swaymsg "[con_id=$id] opacity set $opacity" >/dev/null 2>&1
+}
+
 watch_opacity() {
-  local value
+  local value event change id
+  command -v jq >/dev/null 2>&1 || return 0
+  value="$(get_transparency)"
+  apply_opacity "$value" || true
   while true; do
-    value="$(get_transparency)"
-    apply_opacity "$value" || true
     swaymsg -m -t subscribe '["window"]' 2>/dev/null |
-      while IFS= read -r _event; do
+      while IFS= read -r event; do
+        change="$(jq -r '.change // empty' <<<"$event" 2>/dev/null || true)"
+        [[ "$change" == new ]] || continue
+        id="$(jq -r '.container.id // empty' <<<"$event" 2>/dev/null || true)"
         value="$(get_transparency)"
-        apply_opacity "$value" || true
+        apply_opacity_to_container "$value" "$id" || true
       done
     sleep 1
   done

@@ -91,8 +91,22 @@ start_process blueman-applet blueman-applet
 start_process dunst dunst
 start_process dex dex --autostart --environment sway
 start_opacity_watcher
-# battery-monitor.service is enabled as a target-user unit by the installer;
-# do not launch a second copy from the session script.
+if [[ -n "${SWAYSOCK:-}" && "${STARTUP_SWAY_PREVIEW:-0}" != 1 ]]; then
+  start_script "$home/.local/bin/sway-battery-monitor.sh"
+  start_script "$home/.local/bin/refresh-fast-status.sh"
+  start_script "$home/.local/bin/monitor-status-events.sh"
+
+  # Force every block to reread its state after a Sway config reload. i3blocks
+  # starts blocks with interval=once immediately too; these signals cover
+  # sessions where its status child starts just after this hook.
+  for _attempt in {1..10}; do
+    pgrep -u "$uid" -x i3blocks >/dev/null 2>&1 && break
+    sleep 0.1
+  done
+  for signal in {10..19}; do
+    pkill "-RTMIN+$signal" -u "$uid" -x i3blocks 2>/dev/null || true
+  done
+fi
 
 if command -v wl-paste >/dev/null 2>&1 && command -v cliphist >/dev/null 2>&1; then
   pkill -u "$uid" -f 'wl-paste.*cliphist store' >/dev/null 2>&1 || true

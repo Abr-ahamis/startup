@@ -9,21 +9,24 @@ command=~/.config/i3blocks/scripts/bar/network_speed.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=2
+interval=once
+signal=12
 
 [cpu]
 command=~/.config/i3blocks/scripts/bar/cpu.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=3
+interval=once
+signal=12
 
 [ram]
 command=~/.config/i3blocks/scripts/bar/ram.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=5
+interval=once
+signal=12
 
 [disk]
 command=~/.config/i3blocks/scripts/bar/disk.sh
@@ -31,6 +34,7 @@ markup=pango
 separator=false
 separator_block_width=0
 interval=30
+signal=16
 
 [updates]
 command=~/.config/i3blocks/scripts/bar/updates.sh
@@ -38,20 +42,23 @@ markup=pango
 separator=false
 separator_block_width=0
 interval=3600
+signal=17
 
 [ip]
 command=~/.config/i3blocks/scripts/bar/ip.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=10
+interval=once
+signal=13
 
 [interface]
 command=~/.config/i3blocks/scripts/bar/interface.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=5
+interval=once
+signal=13
 
 [wifi_adapter_1]
 command=~/.config/i3blocks/scripts/bar/wifi.sh
@@ -59,7 +66,8 @@ instance=1
 markup=pango
 separator=false
 separator_block_width=0
-interval=5
+interval=once
+signal=13
 
 [wifi_adapter_2]
 command=~/.config/i3blocks/scripts/bar/wifi.sh
@@ -67,14 +75,16 @@ instance=2
 markup=pango
 separator=false
 separator_block_width=0
-interval=5
+interval=once
+signal=13
 
 [bluetooth]
 command=~/.config/i3blocks/scripts/bar/bluetooth.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=5
+interval=once
+signal=14
 
 [volume]
 command=~/.config/i3blocks/scripts/bar/volume.sh
@@ -98,6 +108,7 @@ markup=pango
 separator=false
 separator_block_width=0
 interval=once
+signal=19
 
 [date]
 command=~/.config/i3blocks/scripts/bar/date.sh
@@ -105,20 +116,23 @@ markup=pango
 separator=false
 separator_block_width=0
 interval=60
+signal=18
 
 [time]
 command=~/.config/i3blocks/scripts/bar/time.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=10
+interval=60
+signal=18
 
 [battery]
 command=~/.config/i3blocks/scripts/bar/battery.sh
 markup=pango
 separator=false
 separator_block_width=0
-interval=30
+interval=once
+signal=15
 
 [power]
 command=~/.config/i3blocks/scripts/bar/power.sh
@@ -126,3 +140,4 @@ markup=pango
 separator=false
 separator_block_width=0
 interval=once
+signal=19

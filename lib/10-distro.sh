@@ -45,7 +45,11 @@ run_distro() {
   printf '  Current environment    %s\n' "${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-TTY}}"
   printf '  Target user            %s\n' "$TARGET_USER"
   printf '  Installation mode      Existing OS → Add Sway\n'
-  printf '  OS upgrade    ----->      not requested\n'
+  if [[ "$PKG_MANAGER" == pacman ]]; then
+    printf '  OS upgrade    ----->      only if required for safe pacman repository recovery\n'
+  else
+    printf '  OS upgrade    ----->      not requested\n'
+  fi
   printf '  GNOME/other desktop removal ---->   existing desktop preserved\n\n'
   if [[ "$DISTRO_ID" == kali ]]; then
     # This is a target-user preference, not a system operation; do not force

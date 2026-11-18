@@ -31,8 +31,20 @@ ICON_LOCAL=""
 # Public IP
 # =========================
 public_ip="$(
-  command -v curl >/dev/null 2>&1 && \
-  curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true
+  state_dir="${XDG_RUNTIME_DIR:-/tmp}"
+  cache_file="$state_dir/i3blocks_public_ip_${UID:-$(id -u)}"
+  if [[ -r "$cache_file" ]] && (( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || printf 0) < 300 )); then
+    cat "$cache_file"
+  else
+    cached="$(cat "$cache_file" 2>/dev/null || true)"
+    fresh="$(command -v curl >/dev/null 2>&1 && curl -4 -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true)"
+    if [[ -n "$fresh" ]]; then
+      printf '%s\n' "$fresh" >"$cache_file" 2>/dev/null || true
+      printf '%s' "$fresh"
+    elif [[ -n "$cached" ]]; then
+      printf '%s' "$cached"
+    fi
+  fi
 )"
 
 # =========================

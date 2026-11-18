@@ -59,7 +59,15 @@ fi
 # =========================
 # Color Logic
 # =========================
-color="$(percentage_color "$pct")"
+if (( pct >= 85 )); then
+  color="$CRITICAL"
+elif (( pct >= 75 )); then
+  color="$WARNING"
+elif (( pct >= 40 )); then
+  color="$ATTENTION"
+else
+  color="$ACCENT"
+fi
 
 # =========================
 # Output

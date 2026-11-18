@@ -23,18 +23,33 @@ esac
 # =========================
 # Memory usage script
 # =========================
-total_kb="$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)"
-available_kb="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
+total_kb=0
+available_kb=0
+while read -r key value _; do
+  case "$key" in
+    MemTotal:) total_kb="$value" ;;
+    MemAvailable:) available_kb="$value" ;;
+  esac
+done </proc/meminfo
 
 used_kb=$((total_kb - available_kb))
 
-used_gb="$(awk -v kb="$used_kb" 'BEGIN {printf "%.1f", kb/1024/1024}')"
-pct="$(awk -v used="$used_kb" -v total="$total_kb" 'BEGIN {printf "%.0f", (used/total)*100}')"
+used_tenths_gb=$((used_kb * 10 / 1024 / 1024))
+used_gb="$((used_tenths_gb / 10)).$((used_tenths_gb % 10))"
+pct=$((used_kb * 100 / total_kb))
 
 # =========================
 # Color logic
 # =========================
-color="$(percentage_color "$pct")"
+if (( pct >= 85 )); then
+  color="$CRITICAL"
+elif (( pct >= 75 )); then
+  color="$WARNING"
+elif (( pct >= 40 )); then
+  color="$ATTENTION"
+else
+  color="$ACCENT"
+fi
 
 # =========================
 # Output

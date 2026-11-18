@@ -11,6 +11,7 @@ source "$SCRIPT_DIR/lib/20-packages.sh"
 source "$SCRIPT_DIR/lib/40-grub.sh"
 source "$SCRIPT_DIR/lib/50-config-files.sh"
 source "$SCRIPT_DIR/lib/80-security.sh"
+source "$SCRIPT_DIR/lib/70-services.sh"
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 
@@ -52,13 +53,51 @@ prepare_foot_config_source || fail 'modern Foot config check failed'
 [[ "$(package_expected_command bluez)" == bluetoothd ]] || fail 'BlueZ must be verified by bluetoothd, not a distro-specific path'
 [[ "$(package_expected_command gtklock)" == gtklock ]] || fail 'GTKlock must be independently verified by its executable'
 [[ "$(package_expected_command keepassxc)" == keepassxc ]] || fail 'KeePassXC must be verified by its executable'
+[[ "$(package_expected_command cmake)" == cmake ]] || fail 'CMake must be verified on battery monitor builds'
+[[ "$(package_expected_command rustscan)" == rustscan ]] || fail 'RustScan must be verified by its executable'
+[[ "$(package_expected_command caido)" == caido ]] || fail 'Caido must be verified by its executable'
+[[ "$(package_expected_command proton-vpn-gnome-desktop)" == protonvpn-app ]] || fail 'APT Proton VPN package must verify its launcher'
+[[ "$(package_expected_command proton-vpn-gtk-app)" == protonvpn-app ]] || fail 'Arch Proton VPN package must verify its launcher'
+grep -q 'core) echo .*rustscan caido' "$SCRIPT_DIR/lib/distros/kali.sh" || fail 'Kali package profile must include RustScan and Caido'
+if rg -ni 'burpsuite|burp suite' "$SCRIPT_DIR/lib/distros"; then
+  fail 'Kali distro profiles must not install or configure Burp Suite'
+fi
 package_name_approved grub-customizer || fail 'optional grub-customizer must remain an approved package'
+(
+  package_for() { printf '%s\n' proton-vpn-gnome-desktop; }
+  package_installed() { [[ "$1" == proton-vpn-gnome-desktop ]]; }
+  package_verify() { [[ "$1" == proton-vpn-gnome-desktop && "${PROTONVPN_TEST_VERIFY:-0}" == 1 ]]; }
+  PROTONVPN_TEST_VERIFY=1 protonvpn_installed
+) || fail 'Proton VPN installed check did not recognize an installed, verified app'
+if (
+  package_for() { printf '%s\n' proton-vpn-gnome-desktop; }
+  package_installed() { [[ "$1" == proton-vpn-gnome-desktop ]]; }
+  package_verify() { return 1; }
+  protonvpn_installed
+); then
+  fail 'Proton VPN installed check accepted an unverified app'
+fi
 info() { :; }
+warn() { TEST_WARNING="$*"; }
 SETUP_REQUIRED_FAILURES=()
 package_installed() { return 1; }
 package_available() { return 1; }
 install_optional_grub_customizer || fail 'missing optional grub-customizer should not fail package setup'
 [[ "${#SETUP_REQUIRED_FAILURES[@]}" == 0 ]] || fail 'missing optional grub-customizer must not create a required package failure'
+
+# A transient Proton DNS failure must be bounded, leave DNS configuration
+# alone, and not invoke curl with an unresolved host or fail the installer.
+PROTONVPN_RETRY_DELAY=0
+STARTUP_APT_SOURCE_DIR="$grub_test_tmp/proton-apts"
+mkdir -p "$STARTUP_APT_SOURCE_DIR/sources.list.d"
+protonvpn_dns_available() { return 1; }
+curl() { fail 'Proton VPN download ran despite failed DNS resolution'; }
+if install_protonvpn_apt proton-vpn-gnome-desktop; then
+  fail 'Proton VPN setup should report a failed DNS bootstrap to its optional caller'
+fi
+[[ "$TEST_WARNING" == *'repo.protonvpn.com could not be resolved'* ]] || fail 'Proton VPN DNS failure was not explained'
+unset -f protonvpn_dns_available curl
+unset PROTONVPN_RETRY_DELAY STARTUP_APT_SOURCE_DIR
 
 # The one known Debian 13 APT source typo is repaired with a backup. Other
 # Debian-family distributions and Arch must not have their repository files
@@ -80,6 +119,111 @@ DISTRO_ID=arch
 repair_debian_trixie_security_source || fail 'Arch source check unexpectedly failed'
 grep -qxF 'deb http://debian.org trixie-security main' "$apt_fixture/sources.list.d/other.list" || fail 'Debian-only repair modified Arch configuration'
 unset STARTUP_APT_SOURCE_DIR
+
+# Remove the known duplicate trixie-security line while retaining all package
+# components in the dedicated security source and backing up both files.
+apt_dupe_fixture="$grub_test_tmp/apt-duplicate"
+mkdir -p "$apt_dupe_fixture/sources.list.d"
+printf '%s\n' 'deb https://security.debian.org/debian-security trixie-security main' > "$apt_dupe_fixture/sources.list.d/security.list"
+printf '%s\n' \
+  'deb http://deb.debian.org/debian trixie main contrib non-free-firmware' \
+  'deb http://security.debian.org/debian-security trixie-security main contrib non-free-firmware' \
+  > "$apt_dupe_fixture/sources.list.d/trixie-main.list"
+STARTUP_APT_SOURCE_DIR="$apt_dupe_fixture"
+SETUP_BACKUP_DIR="$grub_test_tmp/apt-duplicate-backups"
+DISTRO_ID=debian VERSION_CODENAME=trixie
+repair_debian_trixie_security_source || fail 'duplicate Debian security source repair failed'
+grep -qxF 'deb https://security.debian.org/debian-security trixie-security main contrib non-free non-free-firmware' "$apt_dupe_fixture/sources.list.d/security.list" || fail 'security source consolidation did not preserve all components'
+grep -qxF 'deb http://deb.debian.org/debian trixie main contrib non-free-firmware' "$apt_dupe_fixture/sources.list.d/trixie-main.list" || fail 'security source consolidation changed the Debian main repository'
+if grep -q 'trixie-security' "$apt_dupe_fixture/sources.list.d/trixie-main.list"; then
+  fail 'duplicate Debian security source was not removed'
+fi
+[[ -f "$SETUP_BACKUP_DIR/apt-sources/sources.list.d/security.list" && -f "$SETUP_BACKUP_DIR/apt-sources/sources.list.d/trixie-main.list" ]] || fail 'duplicate Debian security sources were not backed up'
+unset STARTUP_APT_SOURCE_DIR
+
+# Missing official APT sources are added per detected distribution in a new
+# deb822 file. Existing third-party sources stay untouched and repeated runs
+# do not duplicate the generated source file.
+repo_fixture_root="$grub_test_tmp/official-repositories"
+repo_keyring_dir="$repo_fixture_root/keyrings"
+mkdir -p "$repo_keyring_dir"
+for keyring in debian-archive-keyring.gpg kali-archive-keyring.gpg ubuntu-archive-keyring.gpg linuxmint-keyring.gpg; do
+  touch "$repo_keyring_dir/$keyring"
+done
+for spec in 'debian|trixie|' 'kali||' 'ubuntu|noble|' 'linuxmint|zena|noble'; do
+  IFS='|' read -r DISTRO_ID VERSION_CODENAME UBUNTU_CODENAME <<< "$spec"
+  apt_fixture="$repo_fixture_root/$DISTRO_ID/etc/apt"
+  mkdir -p "$apt_fixture/sources.list.d"
+  printf '%s\n' 'deb https://vendor.example/stable main' > "$apt_fixture/sources.list.d/vendor.list"
+  STARTUP_APT_SOURCE_DIR="$apt_fixture"
+  STARTUP_KEYRING_DIR="$repo_keyring_dir"
+  PKG_MANAGER=apt
+  DISTRO_PRETTY="$DISTRO_ID"
+  ensure_official_apt_repositories || fail "official repository setup failed for $DISTRO_ID"
+  [[ "$OFFICIAL_REPOSITORY_CHANGED" == 1 ]] || fail "official repositories were not added for $DISTRO_ID"
+  repo_file="$apt_fixture/sources.list.d/neo-startup-official.sources"
+  [[ -s "$repo_file" ]] || fail "official repository file was not created for $DISTRO_ID"
+  grep -q 'vendor.example' "$apt_fixture/sources.list.d/vendor.list" || fail "third-party source changed for $DISTRO_ID"
+  case "$DISTRO_ID" in
+    debian) grep -q 'Suites: trixie trixie-updates' "$repo_file" && grep -q 'trixie-security' "$repo_file" || fail 'Debian suite configuration is incorrect';;
+    kali) grep -q 'URIs: http://http.kali.org/kali/' "$repo_file" && grep -q 'Suites: kali-rolling' "$repo_file" || fail 'Kali repository configuration is incorrect';;
+    ubuntu) grep -q 'Suites: noble noble-updates noble-backports' "$repo_file" && grep -q 'noble-security' "$repo_file" || fail 'Ubuntu suite configuration is incorrect';;
+    linuxmint) grep -q 'Suites: zena' "$repo_file" && grep -q 'Suites: noble noble-updates noble-backports' "$repo_file" || fail 'Linux Mint and Ubuntu base repository configuration is incorrect';;
+  esac
+  ensure_official_apt_repositories || fail "repeat official repository check failed for $DISTRO_ID"
+  [[ "$OFFICIAL_REPOSITORY_CHANGED" == 0 ]] || fail "official repositories were duplicated for $DISTRO_ID"
+done
+unset STARTUP_APT_SOURCE_DIR STARTUP_KEYRING_DIR
+
+# A failed metadata refresh triggers one official-source check and one retry.
+refresh_fixture="$repo_fixture_root/refresh-failure/etc/apt"
+mkdir -p "$refresh_fixture/sources.list.d"
+STARTUP_APT_SOURCE_DIR="$refresh_fixture"
+STARTUP_KEYRING_DIR="$repo_keyring_dir"
+DISTRO_ID=ubuntu DISTRO_PRETTY=Ubuntu VERSION_CODENAME=noble PKG_MANAGER=apt
+refresh_calls=0
+run_package_command() {
+  local label="$1"
+  ((refresh_calls += 1))
+  [[ "$label" == 'apt metadata refresh' ]] && return 1
+  [[ "$label" == 'APT metadata refresh retry' ]] && return 0
+  return 1
+}
+refresh_package_metadata || fail 'failed APT refresh did not recover after adding official Ubuntu sources'
+[[ "$refresh_calls" == 2 && -s "$refresh_fixture/sources.list.d/neo-startup-official.sources" ]] || fail 'APT recovery did not add sources and retry exactly once'
+unset STARTUP_APT_SOURCE_DIR STARTUP_KEYRING_DIR
+unset -f run_package_command
+
+# Arch recovery fills missing official repositories and the mirror, backs up
+# files that it appends to, preserves custom sections, and is idempotent.
+pacman_fixture="$repo_fixture_root/arch"
+mkdir -p "$pacman_fixture/etc/pacman.d"
+printf '%s\n' '[options]' 'Architecture = auto' '' '[custom-repo]' 'Server = https://packages.example/$repo/os/$arch' \
+  > "$pacman_fixture/etc/pacman.conf"
+printf '%s\n' '# no active mirrors' > "$pacman_fixture/etc/pacman.d/mirrorlist"
+STARTUP_PACMAN_CONF="$pacman_fixture/etc/pacman.conf"
+STARTUP_PACMAN_MIRRORLIST="$pacman_fixture/etc/pacman.d/mirrorlist"
+SETUP_BACKUP_DIR="$pacman_fixture/backups"
+DISTRO_ID=arch DISTRO_FAMILY=arch DISTRO_PRETTY='Arch Linux' PKG_MANAGER=pacman
+ensure_official_pacman_repositories || fail 'Arch official repository repair failed'
+[[ "$OFFICIAL_REPOSITORY_CHANGED" == 1 ]] || fail 'Arch repo repair did not report changes'
+grep -qxF '[core]' "$STARTUP_PACMAN_CONF" && grep -qxF '[extra]' "$STARTUP_PACMAN_CONF" || fail 'Arch core/extra repositories were not added'
+grep -qxF 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' "$STARTUP_PACMAN_MIRRORLIST" || fail 'official Arch mirror was not added'
+grep -q 'packages.example' "$STARTUP_PACMAN_CONF" || fail 'custom pacman repository was changed'
+[[ -f "$SETUP_BACKUP_DIR/package-sources/${STARTUP_PACMAN_CONF#/}" && -f "$SETUP_BACKUP_DIR/package-sources/${STARTUP_PACMAN_MIRRORLIST#/}" ]] || fail 'pacman configuration backups were not created'
+ensure_official_pacman_repositories || fail 'repeat Arch repository check failed'
+[[ "$OFFICIAL_REPOSITORY_CHANGED" == 0 ]] || fail 'Arch repository repair was not idempotent'
+malformed_arch="$repo_fixture_root/arch-missing-includes"
+mkdir -p "$malformed_arch/etc/pacman.d"
+printf '%s\n' '[options]' '[core]' '# Include = /etc/pacman.d/mirrorlist' '[extra]' '# Include = /etc/pacman.d/mirrorlist' \
+  > "$malformed_arch/etc/pacman.conf"
+printf '%s\n' 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' > "$malformed_arch/etc/pacman.d/mirrorlist"
+STARTUP_PACMAN_CONF="$malformed_arch/etc/pacman.conf"
+STARTUP_PACMAN_MIRRORLIST="$malformed_arch/etc/pacman.d/mirrorlist"
+SETUP_BACKUP_DIR="$malformed_arch/backups"
+ensure_official_pacman_repositories || fail 'Arch missing repository includes were not repaired'
+[[ "$(grep -c '^Include = /etc/pacman.d/mirrorlist$' "$STARTUP_PACMAN_CONF")" == 2 ]] || fail 'Arch active repository includes were not inserted in existing sections'
+unset STARTUP_PACMAN_CONF STARTUP_PACMAN_MIRRORLIST
 
 # Build the Git helper from a private target-user copy, never in the packaged
 # documentation directory, then install the artifact through the root helper.
@@ -124,6 +268,46 @@ fi
 for resource in foot i3blocks sway flameshot wofi systemd startup; do
   [[ -d "$SCRIPT_DIR/sway/.config/$resource" ]] || fail "missing managed resource: sway/.config/$resource"
 done
+[[ -d "$SCRIPT_DIR/battery-monitor/src" && -f "$SCRIPT_DIR/battery-monitor/CMakeLists.txt" ]] || fail 'C++ battery monitor project is missing its build files'
+[[ -x "$SCRIPT_DIR/sway/.local/bin/sway-battery-monitor.sh" ]] || fail 'Sway-only battery monitor launcher is missing or not executable'
+[[ ! -e "$SCRIPT_DIR/sway/.config/systemd/user/neo-battery-monitor.service" ]] || fail 'battery monitor must not be enabled as a default user service'
+[[ ! -e "$SCRIPT_DIR/sway/.config/systemd/user/battery-monitor.service" ]] || fail 'legacy battery monitor service is still shipped'
+[[ ! -e "$SCRIPT_DIR/sway/.local/bin/battery-monitor.sh" ]] || fail 'legacy battery monitor script is still shipped'
+grep -q 'build_install_battery_monitor' "$SCRIPT_DIR/lib/50-config-files.sh" || fail 'configuration stage does not build the C++ battery monitor'
+grep -q 'sway-battery-monitor.sh' "$SCRIPT_DIR/sway/.local/bin/startup-session.sh" || fail 'Sway session does not start the battery monitor launcher'
+grep -q 'SWAYSOCK' "$SCRIPT_DIR/sway/.local/bin/sway-battery-monitor.sh" || fail 'battery monitor launcher is not gated on Sway'
+grep -q 'swaymsg -m -t subscribe' "$SCRIPT_DIR/sway/.local/bin/sway-opacity-control.sh" || fail 'opacity watcher must use Sway events rather than periodic tree polling'
+grep -q 'apply_opacity_to_container' "$SCRIPT_DIR/sway/.local/bin/sway-opacity-control.sh" || fail 'opacity watcher must update only a newly created window'
+grep -q 'coproc SWAY_EVENT_STREAM' "$SCRIPT_DIR/sway/.local/bin/wofi-popup.sh" || fail 'Wofi focus tracking must use an event stream'
+if grep -q 'swaymsg -t get_tree' "$SCRIPT_DIR/sway/.local/bin/wofi-popup.sh"; then
+  fail 'Wofi focus tracking must not poll the full Sway tree'
+fi
+grep -q 'i3blocks_public_ip_' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/bar/ip.sh" && grep -q '< 300' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/bar/ip.sh" || fail 'i3blocks public IP request must use a five-minute cache'
+[[ -x "$SCRIPT_DIR/sway/.local/bin/refresh-fast-status.sh" && -x "$SCRIPT_DIR/sway/.local/bin/monitor-status-events.sh" ]] || fail 'Sway status refresh helpers must be executable'
+grep -q 'sleep 0.7' "$SCRIPT_DIR/sway/.local/bin/refresh-fast-status.sh" && grep -q -- '-RTMIN+12' "$SCRIPT_DIR/sway/.local/bin/refresh-fast-status.sh" || fail 'CPU, RAM, and network speed must refresh every 0.7 seconds'
+grep -q 'nmcli monitor' "$SCRIPT_DIR/sway/.local/bin/monitor-status-events.sh" && grep -q 'dbus-monitor --system' "$SCRIPT_DIR/sway/.local/bin/monitor-status-events.sh" && grep -q 'udevadm monitor --kernel --subsystem-match=power_supply' "$SCRIPT_DIR/sway/.local/bin/monitor-status-events.sh" || fail 'network, Bluetooth, and battery blocks must refresh on system events'
+grep -q 'for signal in {10..19}' "$SCRIPT_DIR/sway/.local/bin/startup-session.sh" || fail 'Sway session start/reload must refresh all i3blocks status signals'
+for block in network_speed cpu ram ip interface wifi_adapter_1 wifi_adapter_2 bluetooth battery; do
+  grep -A7 "^\[$block\]$" "$SCRIPT_DIR/sway/.config/i3blocks/config" | grep -qx 'interval=once' || fail "$block must wait for its configured event or signal"
+done
+
+# Legacy files are backed up and removed without touching the new service.
+migration_home="$grub_test_tmp/migration-home"
+TARGET_HOME="$migration_home"
+SETUP_BACKUP_DIR="$grub_test_tmp/migration-backups"
+mkdir -p "$TARGET_HOME/.config/systemd/user/default.target.wants" "$TARGET_HOME/.local/bin"
+printf '%s\n' 'legacy unit' > "$TARGET_HOME/.config/systemd/user/battery-monitor.service"
+printf '%s\n' 'legacy script' > "$TARGET_HOME/.local/bin/battery-monitor.sh"
+printf '%s\n' 'new service' > "$TARGET_HOME/.config/systemd/user/neo-battery-monitor.service"
+ln -s "$TARGET_HOME/.config/systemd/user/battery-monitor.service" \
+  "$TARGET_HOME/.config/systemd/user/default.target.wants/battery-monitor.service"
+ln -s "$TARGET_HOME/.config/systemd/user/neo-battery-monitor.service" \
+  "$TARGET_HOME/.config/systemd/user/default.target.wants/neo-battery-monitor.service"
+target_session_available() { return 1; }
+remove_legacy_battery_monitor || fail 'legacy battery monitor migration failed'
+[[ ! -e "$TARGET_HOME/.config/systemd/user/battery-monitor.service" && ! -e "$TARGET_HOME/.local/bin/battery-monitor.sh" ]] || fail 'legacy battery files were not removed'
+[[ ! -e "$TARGET_HOME/.config/systemd/user/neo-battery-monitor.service" ]] || fail 'default-target C++ battery service was not removed'
+[[ -f "$SETUP_BACKUP_DIR/legacy-battery-monitor/battery-monitor.service" && -f "$SETUP_BACKUP_DIR/legacy-battery-monitor/neo-battery-monitor.service" && -f "$SETUP_BACKUP_DIR/legacy-battery-monitor/battery-monitor.sh" ]] || fail 'previous battery files were not backed up'
 [[ -x "$SCRIPT_DIR/sway/.local/bin/logout-session.sh" ]] || fail 'GDM-aware Sway logout helper must be executable'
 if grep -q 'sway/config/' "$SCRIPT_DIR/lib/50-config-files.sh"; then
   fail 'configuration installer still references the obsolete sway/config source layout'

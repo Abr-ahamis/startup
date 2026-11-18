@@ -35,14 +35,33 @@ force_refresh_sway_wallpaper() {
   ' >>"$SETUP_LOG_FILE" 2>&1 || true
 }
 
-enable_battery_monitor() {
-  local unit="$TARGET_HOME/.config/systemd/user/battery-monitor.service"
-  local wants="$TARGET_HOME/.config/systemd/user/default.target.wants/battery-monitor.service"
-  [[ -f "$unit" && ! -L "$unit" ]] || return 1
-  run_as_target mkdir -p "$(dirname "$wants")" || return 1
-  [[ ! -e "$wants" || -L "$wants" ]] || return 1
-  run_as_target ln -sfn "$unit" "$wants" || return 1
-  [[ -L "$wants" && "$(readlink "$wants")" == "$unit" ]]
+remove_legacy_battery_monitor() {
+  local service unit wants
+  local -a legacy_services=(battery-monitor.service neo-battery-monitor.service)
+  local old_script="$TARGET_HOME/.local/bin/battery-monitor.sh"
+  local backup_dir="$SETUP_BACKUP_DIR/legacy-battery-monitor"
+
+  for service in "${legacy_services[@]}"; do
+    unit="$TARGET_HOME/.config/systemd/user/$service"
+    wants="$TARGET_HOME/.config/systemd/user/default.target.wants/$service"
+    if target_session_available; then
+      run_as_target_session systemctl --user disable --now "$service" \
+        >>"$SETUP_LOG_FILE" 2>&1 || true
+    fi
+    if [[ -L "$wants" && "$(readlink "$wants")" == "$unit" ]]; then
+      run_as_target rm -f -- "$wants" || return 1
+    fi
+    if [[ -f "$unit" && ! -L "$unit" ]]; then
+      run_as_root install -d -m 700 "$backup_dir" || return 1
+      run_as_root cp -a -- "$unit" "$backup_dir/$service" || return 1
+      run_as_target rm -f -- "$unit" || return 1
+    fi
+  done
+  if [[ -f "$old_script" && ! -L "$old_script" ]]; then
+    run_as_root install -d -m 700 "$backup_dir" || return 1
+    run_as_root cp -a -- "$old_script" "$backup_dir/battery-monitor.sh" || return 1
+    run_as_target rm -f -- "$old_script" || return 1
+  fi
 }
 
 configure_portal_preference() {
@@ -66,11 +85,10 @@ run_services() {
   else
     warn 'autotiling startup could not be configured.'
   fi
-  if enable_battery_monitor; then
-    ok_indented 'battery-monitor.service enabled for the next target-user session'
-  else
-    warn 'battery-monitor.service could not be enabled for the target user.'
+  if ! remove_legacy_battery_monitor; then
+    warn 'The previous battery monitor could not be fully removed; its backup is in the installer backup directory.'
   fi
+  info 'Battery notifications start from the Sway session hook only; other desktop sessions do not launch the monitor.'
   if configure_portal_preference; then
     ok_indented 'Sway portal preference installed; live portal services were not restarted'
   else

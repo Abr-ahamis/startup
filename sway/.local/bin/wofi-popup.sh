@@ -31,19 +31,33 @@ printf '%s\n' "$$" >"$pid_file"
 flock -u 9
 
 wofi_pid=""
+event_pid=""
+event_fd=""
 cleanup() {
   trap - EXIT INT TERM HUP
   if [[ -n "$wofi_pid" ]] && kill -0 "$wofi_pid" 2>/dev/null; then
     kill -TERM "$wofi_pid" 2>/dev/null || true
     wait "$wofi_pid" 2>/dev/null || true
   fi
+  if [[ -n "$event_pid" ]] && kill -0 "$event_pid" 2>/dev/null; then
+    kill -TERM "$event_pid" 2>/dev/null || true
+    wait "$event_pid" 2>/dev/null || true
+  fi
+  if [[ "$event_fd" =~ ^[0-9]+$ ]]; then
+    exec {event_fd}<&- 2>/dev/null || true
+  fi
   [[ "$(cat "$pid_file" 2>/dev/null || true)" != "$$" ]] || rm -f -- "$pid_file"
 }
 trap cleanup EXIT
 trap 'exit 0' INT TERM HUP
 
-# A normal Sway window is required here: older Wofi releases do not implement
-# close_on_focus_loss, so monitor Sway's focused window as a compatibility path.
+# Subscribe before launching Wofi so the initial focus event cannot be missed.
+# The event stream avoids repeatedly fetching/parsing the full Sway tree while
+# a menu is open. Older Wofi releases do not implement close_on_focus_loss.
+coproc SWAY_EVENT_STREAM { swaymsg -m -t subscribe '["window"]' 2>/dev/null; }
+event_pid="${SWAY_EVENT_STREAM_PID:-}"
+event_fd="${SWAY_EVENT_STREAM[0]:-}"
+
 # Background jobs in non-interactive Bash may get /dev/null as stdin unless
 # the descriptor is explicit. Preserve dmenu pipelines (key help, power,
 # clipboard) while keeping the focus watcher active.
@@ -52,18 +66,25 @@ wofi_pid=$!
 seen_focused=0
 
 while kill -0 "$wofi_pid" 2>/dev/null; do
-  tree="$(swaymsg -t get_tree -r 2>/dev/null || true)"
-  if [[ -n "$tree" ]]; then
-    focused="$(jq -r '[.. | objects | select(.app_id == "wofi" and .focused == true)] | length' <<<"$tree" 2>/dev/null || printf 0)"
-    any_wofi="$(jq -r '[.. | objects | select(.app_id == "wofi")] | length' <<<"$tree" 2>/dev/null || printf 0)"
-    if (( any_wofi > 0 && focused > 0 )); then
+  if [[ -z "$event_fd" ]] || ! kill -0 "$event_pid" 2>/dev/null; then
+    kill -TERM "$wofi_pid" 2>/dev/null || true
+    break
+  fi
+  if IFS= read -r -t 1 event <&"$event_fd"; then
+    [[ "$(jq -r '.change // empty' <<<"$event" 2>/dev/null || true)" == focus ]] || continue
+    focused_app="$(jq -r '.container.app_id // empty' <<<"$event" 2>/dev/null || true)"
+    if [[ "$focused_app" == wofi ]]; then
       seen_focused=1
     elif (( seen_focused )); then
       kill -TERM "$wofi_pid" 2>/dev/null || true
       break
     fi
   fi
-  sleep 0.1
 done
 
+if [[ -n "$event_pid" ]] && kill -0 "$event_pid" 2>/dev/null; then
+  kill -TERM "$event_pid" 2>/dev/null || true
+  wait "$event_pid" 2>/dev/null || true
+fi
+event_pid=""
 wait "$wofi_pid"

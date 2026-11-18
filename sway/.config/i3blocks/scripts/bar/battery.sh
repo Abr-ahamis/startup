@@ -2,6 +2,13 @@
 set -u
 source "$(dirname "$0")/colors.sh"
 
+# Prefer the compiled monitor's one-shot status output when installed. The
+# existing sysfs reader below remains a harmless display fallback.
+neo_battery_monitor="$HOME/.local/bin/neo-battery-monitor"
+if [[ -x "$neo_battery_monitor" ]]; then
+  exec "$neo_battery_monitor" --status
+fi
+
 # =========================
 # Config
 # =========================

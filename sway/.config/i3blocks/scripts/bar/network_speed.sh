@@ -30,9 +30,10 @@ ICON_DOWN=""
 fmt_rate() {
   local b="$1"
   if [ "$b" -ge 1048576 ]; then
-    awk -v n="$b" 'BEGIN {printf "%.1fM", n/1048576}'
+    local tenths=$((b * 10 / 1048576))
+    printf '%d.%dM' "$((tenths / 10))" "$((tenths % 10))"
   elif [ "$b" -ge 1024 ]; then
-    awk -v n="$b" 'BEGIN {printf "%.0fK", n/1024}'
+    printf '%dK' "$((b / 1024))"
   else
     printf "%sB" "$b"
   fi
@@ -41,7 +42,15 @@ fmt_rate() {
 # =========================
 # Logic
 # =========================
-iface="$(ip route get 1.1.1.1 2>/dev/null | awk '{for (i=1;i<=NF;i++) if ($i=="dev") {print $(i+1); exit}}')"
+route="$(ip -o route get 1.1.1.1 2>/dev/null || true)"
+read -r -a route_fields <<<"$route"
+iface=""
+for ((i = 0; i + 1 < ${#route_fields[@]}; i++)); do
+  if [[ "${route_fields[i]}" == dev ]]; then
+    iface="${route_fields[i + 1]}"
+    break
+  fi
+done
 
 if [ -z "${iface}" ] || [ ! -r "/sys/class/net/${iface}/statistics/tx_bytes" ]; then
   printf "<span color='%s'>%s</span> <span color='%s'>0B</span>  <span color='%s'>%s</span> <span color='%s'>0B</span>\n" \
@@ -49,14 +58,18 @@ if [ -z "${iface}" ] || [ ! -r "/sys/class/net/${iface}/statistics/tx_bytes" ]; 
   exit 0
 fi
 
-now="$(date +%s)"
-tx="$(cat "/sys/class/net/${iface}/statistics/tx_bytes")"
-rx="$(cat "/sys/class/net/${iface}/statistics/rx_bytes")"
+read -r uptime _ </proc/uptime
+uptime_seconds="${uptime%%.*}"
+uptime_fraction="${uptime#*.}00"
+uptime_fraction="${uptime_fraction:0:2}"
+now_cs=$((10#$uptime_seconds * 100 + 10#$uptime_fraction))
+IFS= read -r tx <"/sys/class/net/${iface}/statistics/tx_bytes"
+IFS= read -r rx <"/sys/class/net/${iface}/statistics/rx_bytes"
 
 state_dir="${XDG_RUNTIME_DIR:-/tmp}"
-state="${state_dir}/i3blocks_netspeed_${iface}_${UID:-$(id -u)}"
+state="${state_dir}/i3blocks_netspeed_cs_${iface}_${UID:-$(id -u)}"
 
-prev_now="$now"
+prev_now="$now_cs"
 prev_tx="$tx"
 prev_rx="$rx"
 
@@ -64,16 +77,17 @@ if [ -r "$state" ]; then
   read -r prev_now prev_tx prev_rx < "$state"
 fi
 
-printf "%s %s %s\n" "$now" "$tx" "$rx" > "$state" 2>/dev/null || true
+printf "%s %s %s\n" "$now_cs" "$tx" "$rx" > "$state" 2>/dev/null || true
 
-delta=$((now - prev_now))
-[ "$delta" -le 0 ] && delta=1
+delta_cs=$((now_cs - prev_now))
+[ "$delta_cs" -le 0 ] && delta_cs=70
 
-tx_rate=$(((tx - prev_tx) / delta))
-rx_rate=$(((rx - prev_rx) / delta))
-
-[ "$tx_rate" -lt 0 ] && tx_rate=0
-[ "$rx_rate" -lt 0 ] && rx_rate=0
+tx_delta=$((tx - prev_tx))
+rx_delta=$((rx - prev_rx))
+[ "$tx_delta" -lt 0 ] && tx_delta=0
+[ "$rx_delta" -lt 0 ] && rx_delta=0
+tx_rate=$((tx_delta * 100 / delta_cs))
+rx_rate=$((rx_delta * 100 / delta_cs))
 
 # =========================
 # Output
