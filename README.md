@@ -8,17 +8,3 @@ in `lib/` before running the installer; it manages packages, user
 configuration, services, security settings, and boot artwork.
 
 ## Guides
-
-- [GTK lock screen setup](docs/gtklock.md): gtklock on Sway, wallpaper
-  selection, sleep locking, configuration, and GNOME/GDM scope.
-- [KeePassXC](docs/keepassxc.md): distro-specific installation, Ubuntu PPA,
-  optional Snap fallback, and the shared Sway/GNOME shortcut.
-- [Keybindings](KEYBINDINGS.md): configured Sway and GNOME shortcuts.
-- [Docker tools](scr/Docker/README.md): container utilities and examples.
-
-## Development
-
-Shell modules and utilities are Bash. Follow the existing module boundaries in
-`lib/`, keep distribution-specific package behavior in `lib/20-packages.sh`,
-and preserve existing user files. See `AGENTS.md` for repository contribution
-and safety guidance.
