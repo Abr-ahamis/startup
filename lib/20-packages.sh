@@ -381,7 +381,7 @@ repair_debian_trixie_security_source() {
   return 0
 }
 package_install_batch() {
-  local package
+  local package kali_package_failure=0
   (( $# )) || return 0
   for package in "$@"; do
     if ! package_name_valid "$package" || ! package_name_approved "$package"; then
@@ -398,10 +398,21 @@ package_install_batch() {
           if (( APT_OFFICIAL_REPO_RETRY_DONE == 0 )); then
             APT_OFFICIAL_REPO_RETRY_DONE=1
             info "APT could not install $package; checking official repositories before one retry."
-            ensure_official_apt_repositories || return 1
-            refresh_package_metadata || return 1
-            run_package_command "APT install retry $package" run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 30m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package" || return 1
+            if ! ensure_official_apt_repositories || ! refresh_package_metadata ||
+                ! run_package_command "APT install retry $package" run_as_root env DEBIAN_FRONTEND=noninteractive timeout --foreground 30m apt-get -o "DPkg::Lock::Timeout=$SETUP_APT_LOCK_TIMEOUT" -o Dpkg::Use-Pty=0 install -y --no-install-recommends "$package"; then
+              if [[ "$DISTRO_ID" == kali ]]; then
+                warn "Kali package $package still failed after its repository retry; continuing with the remaining packages."
+                kali_package_failure=1
+                continue
+              fi
+              return 1
+            fi
           else
+            if [[ "$DISTRO_ID" == kali ]]; then
+              warn "Kali package $package failed; continuing with the remaining packages."
+              kali_package_failure=1
+              continue
+            fi
             return 1
           fi
         fi
@@ -418,6 +429,7 @@ package_install_batch() {
     printf '%s[ OK ]%s %s: installed\n' "$SETUP_COLOR_OK" "$SETUP_COLOR_RST" "$package"
     _setup_log_write OK "package=$package installed"
   done
+  (( kali_package_failure == 0 ))
 }
 install_packages() {
   local p

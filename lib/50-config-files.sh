@@ -583,7 +583,6 @@ run_config_files() {
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/sway" "$TARGET_HOME/.config/sway" "Sway configuration" 0 || failed=1
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/flameshot" "$TARGET_HOME/.config/flameshot" "Flameshot configuration" 0 || failed=1
   copy_tree_with_backup "$SCRIPT_DIR/sway/.config/wofi" "$TARGET_HOME/.config/wofi" "Wofi configuration" 0 || failed=1
-  copy_tree_with_backup "$SCRIPT_DIR/sway/.config/systemd" "$TARGET_HOME/.config/systemd" "User systemd units" 0 || failed=1
   (( failed == 0 )) && ok_indented 'Copied .config files' || warn "Some .config resources were not copied; existing files were preserved."
   copy_tree_with_backup "$SCRIPT_DIR/sway/.local/bin" "$TARGET_HOME/.local/bin" "User commands" 0 || failed=1
   configure_backlight_access || warn 'Brightness device access could not be configured; brightness changes may need administrator setup.'
@@ -624,7 +623,7 @@ run_config_files() {
     run_as_target fc-cache -f "$TARGET_HOME/.local/share/fonts" >/dev/null 2>&1 || warn "Font cache refresh failed; it will refresh on next login."
   fi
   (( failed == 0 )) && ok_indented 'Copied fonts and refreshed the cache' || warn "Some fonts or managed configuration files were not installed."
-  for target in "$TARGET_HOME/.config/foot" "$TARGET_HOME/.config/i3blocks" "$TARGET_HOME/.config/sway" "$TARGET_HOME/.config/flameshot" "$TARGET_HOME/.config/wofi" "$TARGET_HOME/.config/systemd" "$TARGET_HOME/.local/bin" "$TARGET_HOME/.local/share/fonts"; do
+  for target in "$TARGET_HOME/.config/foot" "$TARGET_HOME/.config/i3blocks" "$TARGET_HOME/.config/sway" "$TARGET_HOME/.config/flameshot" "$TARGET_HOME/.config/wofi" "$TARGET_HOME/.local/bin" "$TARGET_HOME/.local/share/fonts"; do
     [[ -d "$target" ]] || continue
     run_as_root chown -R "$TARGET_USER:$TARGET_GROUP" "$target" || warn "Could not fix ownership under $target"
     fix_tree_permissions "$target" 644 || warn "Could not fix permissions under $target"

@@ -29,6 +29,11 @@ for spec in 'arch|arch|pacman' 'debian|debian|apt' 'ubuntu|debian|apt' 'linuxmin
   else
     [[ " $core_packages " == *' network-manager '* && " $core_packages " == *' build-essential '* && " $core_packages " != *' networkmanager '* ]] || { printf 'APT-family package names are wrong for %s\n' "$id" >&2; exit 1; }
     [[ " $core_packages " == *' cmake '* && " $core_packages " == *' libudev-dev '* ]] || { printf 'APT battery monitor build dependencies are missing for %s\n' "$id" >&2; exit 1; }
+    if [[ "$id" == kali ]]; then
+      [[ " $core_packages " == *' network-manager-applet '* && " $core_packages " != *' network-manager-gnome '* ]] || { printf 'Kali must use its available network-manager-applet package name\n' >&2; exit 1; }
+    else
+      [[ " $core_packages " == *' network-manager-gnome '* ]] || { printf 'Debian-family profile lost network-manager-gnome on %s\n' "$id" >&2; exit 1; }
+    fi
   fi
   [[ "$(package_for keepassxc)" == keepassxc ]] || { printf 'KeePassXC package mapping failed for %s\n' "$id" >&2; exit 1; }
   package_name_approved keepassxc || { printf 'KeePassXC package rejected for %s\n' "$id" >&2; exit 1; }

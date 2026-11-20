@@ -64,6 +64,41 @@ if rg -ni 'burpsuite|burp suite' "$SCRIPT_DIR/lib/distros"; then
 fi
 package_name_approved grub-customizer || fail 'optional grub-customizer must remain an approved package'
 (
+  DISTRO_ID=kali PKG_MANAGER=apt APT_OFFICIAL_REPO_RETRY_DONE=1
+  SETUP_COLOR_INFO='' SETUP_COLOR_RST='' SETUP_COLOR_OK=''
+  second_package_attempted=0
+  package_name_approved() { return 0; }
+  run_package_command() {
+    case "$1" in
+      'apt install unavailable-kali-package') return 1;;
+      'apt install later-kali-package') second_package_attempted=1; return 0;;
+    esac
+  }
+  _setup_log_write() { :; }
+  warn() { :; }
+  if package_install_batch unavailable-kali-package later-kali-package; then
+    exit 1
+  fi
+  [[ "$second_package_attempted" == 1 ]]
+) || fail 'a Kali package failure prevented later packages from being attempted'
+(
+  DISTRO_ID=debian PKG_MANAGER=apt APT_OFFICIAL_REPO_RETRY_DONE=1
+  SETUP_COLOR_INFO='' SETUP_COLOR_RST='' SETUP_COLOR_OK=''
+  second_package_attempted=0
+  package_name_approved() { return 0; }
+  run_package_command() {
+    case "$1" in
+      'apt install unavailable-package') return 1;;
+      'apt install later-package') second_package_attempted=1; return 0;;
+    esac
+  }
+  _setup_log_write() { :; }
+  if package_install_batch unavailable-package later-package; then
+    exit 1
+  fi
+  [[ "$second_package_attempted" == 0 ]]
+) || fail 'Kali-only package continuation changed Debian package behavior'
+(
   package_for() { printf '%s\n' proton-vpn-gnome-desktop; }
   package_installed() { [[ "$1" == proton-vpn-gnome-desktop ]]; }
   package_verify() { [[ "$1" == proton-vpn-gnome-desktop && "${PROTONVPN_TEST_VERIFY:-0}" == 1 ]]; }
@@ -265,9 +300,12 @@ fi
 # Repository resources are stored under sway/.config and deployed into the
 # target user's ~/.config. A stale source path makes every configuration copy
 # fail after package installation, so keep the layout contract explicit.
-for resource in foot i3blocks sway flameshot wofi systemd startup; do
+for resource in foot i3blocks sway flameshot wofi startup; do
   [[ -d "$SCRIPT_DIR/sway/.config/$resource" ]] || fail "missing managed resource: sway/.config/$resource"
 done
+if grep -q 'sway/.config/systemd' "$SCRIPT_DIR/lib/50-config-files.sh"; then
+  fail 'configuration deployment must not require an empty systemd source directory'
+fi
 [[ -d "$SCRIPT_DIR/battery-monitor/src" && -f "$SCRIPT_DIR/battery-monitor/CMakeLists.txt" ]] || fail 'C++ battery monitor project is missing its build files'
 [[ -x "$SCRIPT_DIR/sway/.local/bin/sway-battery-monitor.sh" ]] || fail 'Sway-only battery monitor launcher is missing or not executable'
 [[ ! -e "$SCRIPT_DIR/sway/.config/systemd/user/neo-battery-monitor.service" ]] || fail 'battery monitor must not be enabled as a default user service'
