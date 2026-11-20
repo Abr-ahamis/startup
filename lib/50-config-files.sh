@@ -374,13 +374,6 @@ doomnow_list_processes() {
     '
 }
 
-doomnow_network_status() {
-  command -v nmcli >/dev/null 2>&1 || return 0
-  printf '[NET] Wi-Fi: %s; networking: %s\n' \
-    "$(nmcli radio wifi 2>/dev/null || printf 'unknown')" \
-    "$(nmcli networking 2>/dev/null || printf 'unknown')"
-}
-
 doomnow() {
   doom_state_dir="$(doomnow_state_dir)"
   doom_state_file="$(doomnow_state_file)"
@@ -397,15 +390,6 @@ doomnow() {
   }
 
   printf '[DOOMNOW] Emergency development-session shutdown initiated...\n'
-  if command -v nmcli >/dev/null 2>&1; then
-    printf '[NET] Disabling Wi-Fi and NetworkManager networking...\n'
-    nmcli radio wifi off >/dev/null 2>&1 || printf '[WARN] Could not disable Wi-Fi.\n' >&2
-    nmcli networking off >/dev/null 2>&1 || printf '[WARN] Could not disable networking.\n' >&2
-  else
-    printf '[NET] nmcli is unavailable; networking was not changed.\n'
-  fi
-  doomnow_network_status
-
   doomnow_list_processes >"$doom_candidates"
   printf '# doomnow state; development processes require manual restart\n' >"$doom_state_tmp"
   while IFS="$(printf '\t')" read -r doom_pid doom_command; do
@@ -448,20 +432,12 @@ doomnow() {
   fi
   DOOMNOW_ACTIVE=1
   export DOOMNOW_ACTIVE
-  printf '[DOOMNOW] Emergency shutdown is active. Networking and selected user processes are stopped.\n'
+  printf '[DOOMNOW] Emergency shutdown is active. Selected user processes are stopped.\n'
 }
 
 doomup() {
   doom_state_file="$(doomnow_state_file)"
-  printf '[DOOMUP] Restoring networking and safe user services...\n'
-  if command -v nmcli >/dev/null 2>&1; then
-    nmcli networking on >/dev/null 2>&1 || printf '[WARN] Could not enable networking.\n' >&2
-    nmcli radio wifi on >/dev/null 2>&1 || printf '[WARN] Could not enable Wi-Fi.\n' >&2
-    sleep 2
-    doomnow_network_status
-  else
-    printf '[NET] nmcli is unavailable; networking must be restored by the active network manager.\n'
-  fi
+  printf '[DOOMUP] Restoring safe user services...\n'
   if command -v systemctl >/dev/null 2>&1; then
     for doom_unit in pipewire.service pipewire-pulse.service wireplumber.service; do
       doom_load_state="$(systemctl --user show --property=LoadState --value "$doom_unit" 2>/dev/null || true)"
@@ -480,7 +456,7 @@ doomup() {
     printf '[INFO] Captured process details are in %s\n' "$doom_state_file"
     printf '[INFO] Development processes are not restarted automatically; their original launch context cannot be reconstructed safely.\n'
   fi
-  printf '[DOOMUP] Network restoration complete.\n'
+  printf '[DOOMUP] User service restoration complete.\n'
 }
 EOF
 }
