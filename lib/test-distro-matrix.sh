@@ -17,6 +17,7 @@ for spec in 'arch|arch|pacman' 'debian|debian|apt' 'ubuntu|debian|apt' 'linuxmin
   core_packages="$(package_for core)"
   [[ " $core_packages " == *' gtklock '* ]] || { printf 'GTKlock missing from %s core packages\n' "$id" >&2; exit 1; }
   [[ " $core_packages " != *' grub-customizer '* ]] || { printf 'Optional grub-customizer is incorrectly required on %s\n' "$id" >&2; exit 1; }
+  [[ " $core_packages " != *' network-manager-gnome '* && " $core_packages " != *' network-manager-applet '* ]] || { printf 'Network tray applets must not be installed automatically on %s\n' "$id" >&2; exit 1; }
   if [[ "$id" == kali ]]; then
     [[ " $core_packages " == *' rustscan '* && " $core_packages " == *' caido '* ]] || { printf 'Kali profile is missing RustScan or Caido\n' >&2; exit 1; }
     package_name_approved rustscan && package_name_approved caido || { printf 'Kali security tools were not approved by the package profile\n' >&2; exit 1; }
@@ -29,12 +30,10 @@ for spec in 'arch|arch|pacman' 'debian|debian|apt' 'ubuntu|debian|apt' 'linuxmin
   else
     [[ " $core_packages " == *' network-manager '* && " $core_packages " == *' build-essential '* && " $core_packages " != *' networkmanager '* ]] || { printf 'APT-family package names are wrong for %s\n' "$id" >&2; exit 1; }
     [[ " $core_packages " == *' cmake '* && " $core_packages " == *' libudev-dev '* ]] || { printf 'APT battery monitor build dependencies are missing for %s\n' "$id" >&2; exit 1; }
-    if [[ "$id" == kali ]]; then
-      [[ " $core_packages " == *' network-manager-applet '* && " $core_packages " != *' network-manager-gnome '* ]] || { printf 'Kali must use its available network-manager-applet package name\n' >&2; exit 1; }
-    else
-      [[ " $core_packages " == *' network-manager-gnome '* ]] || { printf 'Debian-family profile lost network-manager-gnome on %s\n' "$id" >&2; exit 1; }
-    fi
   fi
+  network_packages="$(package_for network)"
+  [[ " $network_packages " == *' network-manager '* || " $network_packages " == *' networkmanager '* ]] || { printf 'Network manager base package missing from %s network mapping\n' "$id" >&2; exit 1; }
+  [[ " $network_packages " != *' network-manager-gnome '* && " $network_packages " != *' network-manager-applet '* ]] || { printf 'Network applet must not be installed by %s network mapping\n' "$id" >&2; exit 1; }
   [[ "$(package_for keepassxc)" == keepassxc ]] || { printf 'KeePassXC package mapping failed for %s\n' "$id" >&2; exit 1; }
   package_name_approved keepassxc || { printf 'KeePassXC package rejected for %s\n' "$id" >&2; exit 1; }
   proton_package="$(package_for protonvpn)"

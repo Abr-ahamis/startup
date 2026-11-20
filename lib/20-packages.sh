@@ -95,8 +95,20 @@ package_name_approved() {
 run_package_command() {
   local label="$1"; shift
   local pid rc spin='|/-\\' spin_index=0
+  local -a priority=() runner=()
+  # Keep package metadata, extraction, and boot-config generation from
+  # monopolizing a desktop session. Both utilities are optional; package
+  # behavior is unchanged when a platform does not provide one.
+  command -v nice >/dev/null 2>&1 && priority+=(nice -n 10)
+  command -v ionice >/dev/null 2>&1 && priority+=(ionice -c 2 -n 7)
   _setup_log_write COMMAND "$label: $(printf '%q ' "$@")"
-  "$@" >>"$SETUP_LOG_FILE" 2>&1 &
+  if [[ "${1:-}" == run_as_root ]]; then
+    shift
+    runner=(run_as_root "${priority[@]}" "$@")
+  else
+    runner=("${priority[@]}" "$@")
+  fi
+  "${runner[@]}" >>"$SETUP_LOG_FILE" 2>&1 &
   pid=$!
   SETUP_ACTIVE_PID="$pid"
   printf '%s\n' "$pid" >"$SETUP_ACTIVE_PID_FILE"
@@ -104,7 +116,7 @@ run_package_command() {
     if [[ -t 1 ]]; then
       printf '\r%s[WORK]%s %s %s elapsed %s' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "${spin:spin_index++%4:1}" "$label" "$(elapsed_time)"
     fi
-    sleep 0.2
+    sleep 0.5
   done
   wait "$pid"
   rc=$?

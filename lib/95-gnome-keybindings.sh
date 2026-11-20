@@ -121,6 +121,10 @@ run_gnome_desktop_setup() {
     desktop=" $desktop $(run_as_target_session systemctl --user show-environment 2>/dev/null | awk -F= '$1 ~ /^(XDG_CURRENT_DESKTOP|DESKTOP_SESSION|GDMSESSION)$/ {print $2}' | tr '\n' ' ') "
   fi
   [[ "$desktop" == *GNOME* || "$desktop" == *gnome* ]] || return 0
+  if [[ "${STARTUP_CONFIGURE_GNOME:-0}" != 1 ]]; then
+    info 'GNOME settings and shortcuts were left unchanged; set STARTUP_CONFIGURE_GNOME=1 to opt in.'
+    return 0
+  fi
   command -v gsettings >/dev/null 2>&1 || { warn "GNOME detected but gsettings is unavailable."; return 1; }
   if target_session_available; then
     run_as_target_session gsettings set org.gnome.desktop.wm.preferences button-layout ':minimize,maximize,close' || return 1

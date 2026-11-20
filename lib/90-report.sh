@@ -72,7 +72,7 @@ launch_sway_preview() {
   # Remove only previews created by this installer (identified by their
   # nested X11 wlroots environment).  Never terminate the user's real desktop
   # Sway session.
-  local pid environ preview_config rc target_config proc_name preview_wallpaper candidate
+  local pid environ preview_config rc proc_name preview_wallpaper candidate
   local preview_launcher_pid preview_pid preview_window attempt preview_closed_by_timeout=0 preview_deadline=0
   for proc_name in sway swayidle swaylock swaybg i3blocks foot wofi; do
     while read -r pid; do
@@ -85,21 +85,14 @@ launch_sway_preview() {
 
   preview_config="$SETUP_RUNTIME_DIR/sway-preview.conf"
   mkdir -p "$SETUP_RUNTIME_DIR" 2>/dev/null || return 0
-  target_config="$TARGET_HOME/.config/sway/config"
   preview_wallpaper=""
   for candidate in "$TARGET_HOME/.local/share/backgrounds/startup/IMG1.jpg" "$TARGET_HOME/.local/share/backgrounds/startup/IMG2.jpg" "$SCRIPT_DIR/wallpaper/IMG1.jpg" "$SCRIPT_DIR/wallpaper/IMG2.jpg"; do
     [[ -f "$candidate" ]] && { preview_wallpaper="$candidate"; break; }
   done
-  if [[ -f "$target_config" ]]; then
-    cat >"$preview_config" <<EOF
-# Temporary installer preview configuration.
-include $target_config
-output * mode 800x600
-bindsym Ctrl+Shift+q exit
-EOF
-  else
-    cat >"$preview_config" <<'EOF'
-# Temporary installer preview configuration.
+  # Minimal preview only: never include the user's Sway config, because its
+  # exec/exec_always lines can start a second copy of session daemons and menus.
+  cat >"$preview_config" <<'EOF'
+# Temporary, isolated installer preview configuration.
 output * mode 800x600
 bar {
     status_command while date '+startup sway preview  %H:%M:%S'; do sleep 1; done
@@ -107,7 +100,6 @@ bar {
 }
 bindsym Ctrl+Shift+q exit
 EOF
-  fi
   if [[ -n "$preview_wallpaper" ]]; then
     printf 'output * bg "%s" fill\n' "$preview_wallpaper" >>"$preview_config"
   fi
@@ -184,7 +176,12 @@ run_report() {
 
   # Reload the active Sway session, or show the temporary preview on another
   # desktop. Print the completion summary only after that action finishes.
-  launch_sway_preview
+  if target_sway_socket >/dev/null 2>&1 || [[ "${STARTUP_ENABLE_SWAY_PREVIEW:-0}" == 1 ]]; then
+    launch_sway_preview
+  else
+    info 'Sway preview skipped outside Sway to avoid starting a second desktop compositor; set STARTUP_ENABLE_SWAY_PREVIEW=1 to opt in.'
+  fi
+  collect_system_diagnostics
   printf '%s========================================%s\n' "$SETUP_COLOR_CYAN" "$SETUP_COLOR_RST"
   if (( ${#SETUP_REQUIRED_FAILURES[@]} )); then
     error "Setup did not complete successfully: ${#SETUP_REQUIRED_FAILURES[@]} required verification failure(s)"
@@ -236,6 +233,9 @@ run_report() {
     printf 'Failed Packages: %s\n' "${FAILED_REQUIRED_PACKAGES[*]}"
   fi
   echo "Log file     : $SETUP_LOG_FILE"
+  echo "Transcript   : $SETUP_TRANSCRIPT_FILE"
+  echo "System log   : $SETUP_LOG_DIR/system-journal.log"
+  echo "User log     : $SETUP_LOG_DIR/user-journal.log"
   echo "Backups      :"
   [[ -d "${SETUP_BACKUP_DIR:-}" ]] && echo "  Installer  : $SETUP_BACKUP_DIR"
   [[ -d "${SETUP_WALLPAPER_BACKUP_DIR:-}" ]] && echo "  Wallpapers : $SETUP_WALLPAPER_BACKUP_DIR"

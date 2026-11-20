@@ -70,6 +70,7 @@ SETUP_STARTED_AT="$(date +%s)"
 SETUP_ACTIVE_PID=""
 SETUP_ACTIVE_PID_FILE="$SETUP_BASE_DIR/active-package.pid"
 SETUP_CLEANUP_DONE=0
+SETUP_DIAGNOSTICS_COLLECTED=0
 SETUP_STAGE_CURRENT=0
 SETUP_STAGE_TOTAL=9
 SETUP_PROGRESS_COMPLETED_WEIGHT=0
@@ -202,6 +203,37 @@ cleanup_previous_package_process() {
   rm -f -- "$SETUP_ACTIVE_PID_FILE"
 }
 
+collect_system_diagnostics() {
+  local system_log="$SETUP_LOG_DIR/system-journal.log"
+  local user_log="$SETUP_LOG_DIR/user-journal.log"
+  local system_temp user_temp
+  (( SETUP_DIAGNOSTICS_COLLECTED == 0 )) || return 0
+  SETUP_DIAGNOSTICS_COLLECTED=1
+
+  # Preserve OS-level warnings and errors from this installer run, including
+  # kernel and service messages. Keep it bounded and best-effort for systems
+  # without systemd-journald or without permission to read a given journal.
+  system_temp="$(run_as_root mktemp "$SETUP_LOG_DIR/.system-journal.XXXXXX" 2>/dev/null || true)"
+  user_temp="$(run_as_target mktemp "$SETUP_LOG_DIR/.user-journal.XXXXXX" 2>/dev/null || true)"
+  if command -v journalctl >/dev/null 2>&1; then
+    if [[ -n "$system_temp" ]]; then
+      run_as_root sh -c 'journalctl --since "@$1" --no-pager --output=short-iso-precise --priority=warning --lines=5000 >"$2" 2>&1' sh "$SETUP_STARTED_AT" "$system_temp" || :
+      run_as_root chown "$TARGET_USER:$TARGET_GROUP" "$system_temp" 2>/dev/null || :
+      run_as_root chmod 600 "$system_temp" 2>/dev/null || :
+      run_as_root mv -f -- "$system_temp" "$system_log" 2>/dev/null || :
+    fi
+    if [[ -n "$user_temp" ]]; then
+      run_as_target sh -c 'journalctl --user --since "@$1" --no-pager --output=short-iso-precise --priority=warning --lines=5000 >"$2" 2>&1' sh "$SETUP_STARTED_AT" "$user_temp" || :
+      run_as_target mv -f -- "$user_temp" "$user_log" 2>/dev/null || :
+    fi
+  else
+    [[ -z "$system_temp" ]] || { printf 'journalctl is unavailable; system journal diagnostics were not collected.\n' >"$system_temp"; run_as_root chown "$TARGET_USER:$TARGET_GROUP" "$system_temp" 2>/dev/null || :; run_as_root mv -f -- "$system_temp" "$system_log" 2>/dev/null || :; }
+    [[ -z "$user_temp" ]] || { printf 'journalctl is unavailable; user journal diagnostics were not collected.\n' >"$user_temp"; run_as_target mv -f -- "$user_temp" "$user_log" 2>/dev/null || :; }
+  fi
+  run_as_target chmod 600 "$user_log" "$system_log" 2>/dev/null || true
+  _setup_log_write INFO "Collected bounded system and user journal diagnostics at $SETUP_LOG_DIR (warnings and errors since setup start)."
+}
+
 setup_cleanup() {
   local rc="${1:-0}"
   (( SETUP_CLEANUP_DONE == 0 )) || return 0
@@ -210,8 +242,23 @@ setup_cleanup() {
     terminate_process_tree "$SETUP_ACTIVE_PID"
     SETUP_ACTIVE_PID=""
   fi
+  collect_system_diagnostics
   rm -f -- "$SETUP_ACTIVE_PID_FILE" 2>/dev/null || true
   [[ -d "$SETUP_RUNTIME_DIR" ]] && rm -rf -- "$SETUP_RUNTIME_DIR" 2>/dev/null || true
+  # Backups are created by privileged helpers so system-owned files can be
+  # copied safely. Hand the private backup trees back to the target user at
+  # exit; otherwise the user can see the directory names but cannot restore
+  # or archive the files inside them.
+  local backup_root
+  for backup_root in \
+    "$SETUP_BASE_DIR/installer-backups" \
+    "$SETUP_BASE_DIR/wallpaper-backups" \
+    "$SETUP_BASE_DIR/security-backups"; do
+    [[ -d "$backup_root" && ! -L "$backup_root" ]] || continue
+    run_as_root chown -R -- "$TARGET_USER:$TARGET_GROUP" "$backup_root" 2>/dev/null ||
+      _setup_log_write WARN "Could not transfer backup ownership to $TARGET_USER: $backup_root"
+    run_as_root chmod 700 -- "$backup_root" 2>/dev/null || true
+  done
   # Never launch a compositor from installer cleanup.  Cleanup must be
   # side-effect free with respect to the user's existing desktop session;
   # starting Sway here leaves a child process attached to the terminal.
@@ -238,7 +285,7 @@ run_logged() {
     if [[ -t 1 ]]; then
       printf '\r%s[WORK]%s %s %s elapsed %s' "$SETUP_COLOR_INFO" "$SETUP_COLOR_RST" "${spin:i++%4:1}" "$label" "$(elapsed_time)"
     fi
-    sleep 0.2
+    sleep 0.5
   done
   wait "$pid"; rc=$?
   SETUP_ACTIVE_PID=""
@@ -593,3 +640,4 @@ trap 'setup_interrupted INT 130' INT
 trap 'setup_interrupted TERM 143' TERM
 trap 'setup_interrupted HUP 129' HUP
 trap 'setup_cleanup $?' EXIT
+start_transcript_logging || warn 'Console transcript logging could not be started.'

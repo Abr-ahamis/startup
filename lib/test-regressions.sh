@@ -59,6 +59,10 @@ prepare_foot_config_source || fail 'modern Foot config check failed'
 [[ "$(package_expected_command proton-vpn-gnome-desktop)" == protonvpn-app ]] || fail 'APT Proton VPN package must verify its launcher'
 [[ "$(package_expected_command proton-vpn-gtk-app)" == protonvpn-app ]] || fail 'Arch Proton VPN package must verify its launcher'
 grep -q 'core) echo .*rustscan caido' "$SCRIPT_DIR/lib/distros/kali.sh" || fail 'Kali package profile must include RustScan and Caido'
+if grep -Fq 'include $target_config' "$SCRIPT_DIR/lib/90-report.sh"; then
+  fail "nested Sway preview must not run the user's full startup configuration"
+fi
+grep -Fq 'STARTUP_ENABLE_SWAY_PREVIEW' "$SCRIPT_DIR/lib/90-report.sh" || fail 'nested Sway preview must be opt-in outside an active Sway session'
 if rg -ni 'burpsuite|burp suite' "$SCRIPT_DIR/lib/distros"; then
   fail 'Kali distro profiles must not install or configure Burp Suite'
 fi
@@ -386,6 +390,7 @@ if grep -q 'pkill -KILL -u' "$SCRIPT_DIR/sway/.config/i3blocks/scripts/menu/powe
 fi
 grep -q 'keepassxc) launch_first keepassxc /snap/bin/keepassxc' "$SCRIPT_DIR/sway/.config/sway/scripts/launch-app.sh" || fail 'application launcher must support native and Snap KeePassXC commands'
 grep -q 'startup-keepassxc.*<Super><Shift>p.*KeePassXC password manager' "$SCRIPT_DIR/lib/95-gnome-keybindings.sh" || fail 'GNOME must receive the KeePassXC shortcut'
+grep -Fq 'STARTUP_CONFIGURE_GNOME' "$SCRIPT_DIR/lib/95-gnome-keybindings.sh" || fail 'GNOME changes must be opt-in to avoid stalling the current desktop session'
 grep -Fq "gnome_set_verified org.gnome.desktop.interface icon-theme \"'Adwaita'\"" "$SCRIPT_DIR/lib/95-gnome-keybindings.sh" || fail 'GNOME setup must set the Adwaita icon theme'
 grep -q 'gnome_set_verified org.gnome.desktop.interface text-scaling-factor 0\.8' "$SCRIPT_DIR/lib/95-gnome-keybindings.sh" || fail 'GNOME setup must set 80 percent text scaling'
 grep -q 'Alt + Shift + P|KeePassXC password manager' "$SCRIPT_DIR/sway/.config/sway/scripts/key-help-wofi.sh" || fail 'Sway key help must list KeePassXC'
